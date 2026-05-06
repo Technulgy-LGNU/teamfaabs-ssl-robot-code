@@ -4,24 +4,53 @@ use serde::{Deserialize, Serialize};
 use std::net::Ipv4Addr;
 use std::path::Path;
 
-#[derive(Debug, Deserialize, Serialize, Default)]
+#[derive(Debug, Deserialize, Serialize)]
 pub struct Config {
   pub robot_id: u8,
   pub cp_config: CrashPilotConfig,
+  pub onboard_vision_socket_path: String,
+  pub teensy: TeensyConfig,
+}
+impl Default for Config {
+  fn default() -> Self {
+    Self {
+      robot_id: 1,
+      cp_config: CrashPilotConfig::default(),
+      onboard_vision_socket_path: "/tmp/ov_socket".to_string(),
+      teensy: Default::default(),
+    }
+  }
 }
 
 
 
 #[derive(Debug, Deserialize, Serialize)]
 pub struct CrashPilotConfig {
-  host: Ipv4Addr,
-  port: u16,
+  pub host: Ipv4Addr,
+  pub port: u16,
+  pub port_outgoing: u16,
 }
 impl Default for CrashPilotConfig {
   fn default() -> Self {
     Self {
       host: Ipv4Addr::new(10, 0, 64, 221),
       port: 8192,
+      port_outgoing: 4096,
+    }
+  }
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+pub struct TeensyConfig {
+  pub vid: u16,
+  pub pid: u16,
+}
+impl Default for TeensyConfig {
+  fn default() -> Self {
+    Self {
+      // No idea if that's right, will be replaced Todo(Replace with actual values)
+      vid: 0x16C0,
+      pid: 0x0483,
     }
   }
 }
