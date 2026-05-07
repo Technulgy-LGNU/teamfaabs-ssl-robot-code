@@ -7,5 +7,5 @@ port = 8192
 port_outgoing = 4096
 
 [teensy]
-vid = 5824
-pid = 1155
+vid = 0x16C0
+pid = 0x0480

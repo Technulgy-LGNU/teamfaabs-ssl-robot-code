@@ -50,7 +50,7 @@ impl Default for TeensyConfig {
     Self {
       // No idea if that's right, will be replaced Todo(Replace with actual values)
       vid: 0x16C0,
-      pid: 0x0483,
+      pid: 0x0480,
     }
   }
 }
