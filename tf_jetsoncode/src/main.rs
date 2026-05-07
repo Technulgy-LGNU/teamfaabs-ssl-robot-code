@@ -39,6 +39,7 @@ async fn main() {
   let mut cp_data: proto::CpRobot = Default::default();
   let mut vision_data: communication::VisionMsg = Default::default();
   let mut teensy_data: communication::TeensyRecMSG = Default::default();
+  let mut robot_msg: communication::TeensySendMsg = Default::default();
 
   // The rest of the code should not depend on
   // late packets, so we use tokio::time::tick to
@@ -66,15 +67,33 @@ async fn main() {
       teensy_data = packet;
     }
 
+    // Buttons
+    // React to button presses
+    for i in 0..15 {
+      if teensy_data.button(i) {
+        println!("Button {} pressed", i);
+      }
+    }
+
+    // Led's
+    // Depending on different states, set the led's on the mainboard
+
+    // After logic, send new robot command
+    let buf = robot_msg.encode();
+    tx.publish(buf).await;
 
     // At the end of the loop, send cp update data
     let cp_update_data: RobotCp = RobotCp {
       robot_id: config.robot_id as u32,
-      battery_voltage: Some(teensy_data.batt_volt),
-      kicker_ready: teensy_data.kick_ready,
-      has_ball: teensy_data.has_ball,
-      error_msg: None,
-      acting: None,
+      battery_voltage: Some(teensy_data.batt_level as f32),
+      kicker_ready: teensy_data.flags.contains(communication::RecFlags::KICK_READY) && teensy_data.flags.contains(communication::RecFlags::CHIP_READY),
+      has_ball: teensy_data.flags.contains(communication::RecFlags::HAS_BALL),
+      error_msg: if teensy_data.flags.contains(communication::RecFlags::ERROR) {
+        Some("Teensy reported an error".to_string())
+      } else {
+        None
+      },
+      acting: Some(true),
       last_rec_packet: Some(cp_data.packet_id),
     };
     send_cp(&config, &upd_socket, cp_update_data).await;

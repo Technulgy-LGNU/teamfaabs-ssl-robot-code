@@ -1,0 +1,11 @@
+robot_id = 1
+onboard_vision_socket_path = "/tmp/ov_socket"
+
+[cp_config]
+host = "10.0.64.221"
+port = 8192
+port_outgoing = 4096
+
+[teensy]
+vid = 5824
+pid = 1155

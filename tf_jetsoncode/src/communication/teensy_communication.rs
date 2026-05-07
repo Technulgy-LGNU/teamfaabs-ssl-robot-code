@@ -1,4 +1,4 @@
-use crate::communication::{EventShare, TeensyOut, TeensyRecMSG};
+use crate::communication::{EventShare, RecFlags, TeensyOut, TeensyRecMSG};
 use crate::config;
 
 pub async fn teensy_communication(cfg: &config::Config, tx: EventShare, rx: TeensyOut) {
@@ -28,12 +28,13 @@ pub async fn teensy_communication(cfg: &config::Config, tx: EventShare, rx: Teen
     loop {
       loop {
         match teensy.read(&mut buf) {
-          Ok(size) if size >= 8 => {
+          Ok(size) if size >= 6 => {
+            let flags = u32::from_be_bytes([buf[0], buf[1], buf[2], buf[3]]);
+
             let msg = TeensyRecMSG {
-              has_ball: buf[0] != 0,
-              kick_ready: buf[1] != 0,
-              batt_volt: f32::from_le_bytes(buf[2..6].try_into().unwrap_or([0; 4])),
-              orientation: u16::from_le_bytes([buf[4], buf[5]]),
+              flags: RecFlags::from_bits_retain(flags),
+              batt_level: buf[4],
+              orientation: buf[5],
             };
 
             let mut lock = tx.lock().await;
