@@ -74,6 +74,7 @@ impl Default for TeensyRecMSG {
 
 /// Raw HID Msg for the Teensy
 #[repr(C)]
+#[derive(Debug)]
 pub struct TeensySendMsg {
   // Bitflags:
   // Bit 0: Error

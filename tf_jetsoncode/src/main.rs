@@ -2,10 +2,12 @@ use std::time::Duration;
 use crate::communication::communication_receiver;
 use crate::communication::send_cp::send_cp;
 use crate::proto::RobotCp;
+use crate::robot_logic::orca::{nav_command_to_teensy, NavIntent, OrcaHandle, OrcaParams, OrcaRequest, Vec2i, WorldSnapshot};
 
 mod proto;
 mod communication;
 mod config;
+mod robot_logic;
 
 #[tokio::main]
 async fn main() {
@@ -31,6 +33,17 @@ async fn main() {
       panic!("Failed to create udp socket for sending cp data: {}", e);
     }
   };
+
+  // Orca Params & Handlers
+  let params = OrcaParams {
+    time_horizon_ms: 4000,
+    safety_margin_mm: 100,
+    default_robot_radius_mm: 90,
+    time_step_ms: 8,
+    responsibility: 0.7,
+    run_blocking: true,
+  };
+  let orca = OrcaHandle::spawn(params);
 
 
   // Starting robot
@@ -75,10 +88,53 @@ async fn main() {
       }
     }
 
+    // Orca
+    let world = WorldSnapshot::from_cp(&cp_data, config.robot_id as u32, params.default_robot_radius_mm);
+
+
+    // Game Logic
+    match cp_data.cmd.state {
+      1 => {
+        // Robot is not allowed to move
+        println!("HALT");
+        let intent = NavIntent::Stop;
+        orca.publish(OrcaRequest { world, intent});
+      },
+      2 => {
+        // Robot is allowed to move with a max speed of
+        // 1,5m/s (1500mm/s) & stay away from ball 500mm
+        println!("STOP");
+        let intent = NavIntent::GoToPosition {
+          target_pos_mm: Vec2i { x: cp_data.cmd.pos.unwrap_or_default().x, y: cp_data.cmd.pos.unwrap_or_default().y },
+          max_speed_mm_s: 1500,
+        };
+
+        orca.publish(OrcaRequest { world, intent});
+      },
+      3 => {
+        // Free to listen to commands
+        println!("FREE");
+      },
+      5 => {
+        // Goalie, move into penalty area and protect the goal
+        println!("GOALIE");
+      }
+      _ => {
+        println!("UNKNOWN")
+      }
+    }
+
     // Led's
     // Depending on different states, set the led's on the mainboard
 
     // After logic, send new robot command
+    robot_msg.state = cp_data.cmd.state as u8;
+
+    let orca_cmd = orca.latest();
+    robot_msg = nav_command_to_teensy(robot_msg, orca_cmd);
+
+    println!("Sending command to teensy: {:?}", robot_msg);
+
     let buf = robot_msg.encode();
     tx.publish(buf).await;
 
