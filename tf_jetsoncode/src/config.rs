@@ -7,17 +7,21 @@ use std::path::Path;
 #[derive(Debug, Deserialize, Serialize)]
 pub struct Config {
   pub robot_id: u8,
+  pub robot_team: String,
   pub cp_config: CrashPilotConfig,
   pub onboard_vision_socket_path: String,
   pub teensy: TeensyConfig,
+  pub field: FieldConfig,
 }
 impl Default for Config {
   fn default() -> Self {
     Self {
       robot_id: 1,
+      robot_team: "yellow".to_string(),
       cp_config: CrashPilotConfig::default(),
       onboard_vision_socket_path: "/tmp/ov_socket".to_string(),
       teensy: Default::default(),
+      field: Default::default(),
     }
   }
 }
@@ -51,6 +55,28 @@ impl Default for TeensyConfig {
       // No idea if that's right, will be replaced Todo(Replace with actual values)
       vid: 0x16C0,
       pid: 0x0480,
+    }
+  }
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+pub struct FieldConfig {
+  // General field config, everything in mm
+  width: u32,
+  height: u32,
+  runoff_width: u32,
+  penalty_area_width: u32,
+  penalty_area_height: u32,
+}
+impl Default for FieldConfig {
+  fn default() -> Self {
+    // Default values for DIV-B
+    Self {
+      width: 9000,
+      height: 6000,
+      runoff_width: 300,
+      penalty_area_width: 2000,
+      penalty_area_height: 1000,
     }
   }
 }

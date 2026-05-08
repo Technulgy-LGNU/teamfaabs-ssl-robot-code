@@ -106,7 +106,7 @@ impl TeensySendMsg {
     let mut buf = [0u8; Self::SIZE];
 
     // flags
-    buf[0..2].copy_from_slice(&self.flags.bits().to_be_bytes());
+    buf[0..2].copy_from_slice(&self.flags.bits().to_le_bytes());
 
     // single-byte fields
     buf[2] = self.state;
@@ -114,9 +114,9 @@ impl TeensySendMsg {
     buf[4] = self.dribbler_pwr;
 
     // u16 values
-    buf[5..7].copy_from_slice(&self.dir.to_be_bytes());
-    buf[7..9].copy_from_slice(&self.speed.to_be_bytes());
-    buf[9..11].copy_from_slice(&self.orient.to_be_bytes());
+    buf[5..7].copy_from_slice(&self.dir.to_le_bytes());
+    buf[7..9].copy_from_slice(&self.speed.to_le_bytes());
+    buf[9..11].copy_from_slice(&self.orient.to_le_bytes());
 
     buf
   }

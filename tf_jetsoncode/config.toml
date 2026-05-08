@@ -1,4 +1,5 @@
 robot_id = 1
+robot_team = "yellow"
 onboard_vision_socket_path = "/tmp/ov_socket"
 
 [cp_config]
@@ -7,5 +8,12 @@ port = 8192
 port_outgoing = 4096
 
 [teensy]
-vid = 0x16C0
-pid = 0x0480
+vid = 5824
+pid = 1152
+
+[field]
+width = 9000
+height = 6000
+runoff_width = 300
+penalty_area_width = 2000
+penalty_area_height = 1000

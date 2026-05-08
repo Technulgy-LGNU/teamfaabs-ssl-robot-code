@@ -2,6 +2,8 @@ use std::time::Duration;
 use crate::communication::communication_receiver;
 use crate::communication::send_cp::send_cp;
 use crate::proto::RobotCp;
+use crate::robot_logic::command;
+use crate::robot_logic::goalie::goalie;
 use crate::robot_logic::orca::{nav_command_to_teensy, NavIntent, OrcaHandle, OrcaParams, OrcaRequest, Vec2i, WorldSnapshot};
 
 mod proto;
@@ -96,14 +98,14 @@ async fn main() {
     match cp_data.cmd.state {
       1 => {
         // Robot is not allowed to move
-        println!("HALT");
+
         let intent = NavIntent::Stop;
         orca.publish(OrcaRequest { world, intent});
       },
       2 => {
         // Robot is allowed to move with a max speed of
         // 1,5m/s (1500mm/s) & stay away from ball 500mm
-        println!("STOP");
+
         let intent = NavIntent::GoToPosition {
           target_pos_mm: Vec2i { x: cp_data.cmd.pos.unwrap_or_default().x, y: cp_data.cmd.pos.unwrap_or_default().y },
           max_speed_mm_s: 1500,
@@ -113,11 +115,17 @@ async fn main() {
       },
       3 => {
         // Free to listen to commands
-        println!("FREE");
+        robot_msg = command(&config, &cp_data, &orca, &world, &vision_data, robot_msg);
+      },
+      4 => {
+        // Goalie, move into penalty area and protect the goal
+        robot_msg = goalie(&cp_data, &orca, &world, &vision_data, robot_msg);
       },
       5 => {
-        // Goalie, move into penalty area and protect the goal
-        println!("GOALIE");
+        // Substitute
+        // HALT
+        let intent = NavIntent::Stop;
+        orca.publish(OrcaRequest { world, intent});
       }
       _ => {
         println!("UNKNOWN")
