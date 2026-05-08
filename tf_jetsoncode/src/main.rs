@@ -73,6 +73,7 @@ async fn main() {
     };
 
     if let Some(packet) = cp {
+      println!("{:?}", packet);
       cp_data = packet;
     }
     if let Some(packet) = vis {
@@ -128,7 +129,6 @@ async fn main() {
         orca.publish(OrcaRequest { world, intent});
       }
       _ => {
-        println!("UNKNOWN")
       }
     }
 
@@ -140,8 +140,6 @@ async fn main() {
 
     let orca_cmd = orca.latest();
     robot_msg = nav_command_to_teensy(robot_msg, orca_cmd);
-
-    println!("Sending command to teensy: {:?}", robot_msg);
 
     let buf = robot_msg.encode();
     tx.publish(buf).await;

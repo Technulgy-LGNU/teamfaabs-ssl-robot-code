@@ -1,11 +1,11 @@
-robot_id = 1
+robot_id = 2
 robot_team = "yellow"
 onboard_vision_socket_path = "/tmp/ov_socket"
 
 [cp_config]
-host = "10.0.64.221"
-port = 8192
-port_outgoing = 4096
+host = "0.0.0.0"
+port = 1024
+port_outgoing = 8129
 
 [teensy]
 vid = 5824
