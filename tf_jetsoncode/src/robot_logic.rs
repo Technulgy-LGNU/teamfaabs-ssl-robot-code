@@ -1,4 +1,4 @@
-use crate::communication::{SendFlags, TeensySendMsg, VisionMsg};
+use crate::communication::{send_flags, TeensySendMsg, VisionMsg};
 use crate::config;
 use crate::proto::{CpRobot, CpTrackedRobot};
 use crate::robot_logic::orca::{OrcaHandle, OrcaRequest, Vec2i, WorldSnapshot};
@@ -50,7 +50,7 @@ pub fn command(cfg: &config::Config, cp_data: &CpRobot, orca: &OrcaHandle, world
         msg.orient = cp_data.cmd.kick_orient.unwrap_or_default() as u16;
       } else {
         msg.kick_pwr = cp_data.cmd.kick_speed.unwrap_or_default() as u8;
-        msg.flags.set(SendFlags::KICK, true);
+        msg.set_flag(send_flags::KICK);
       }
 
     },

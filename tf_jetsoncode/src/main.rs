@@ -168,6 +168,6 @@ async fn main() {
       acting: Some(true),
       last_rec_packet: Some(cp_data.packet_id),
     };
-    send_cp(&config, &upd_socket, cp_update_data);
+    send_cp(&config, &upd_socket, cp_update_data).await;
   }
 }

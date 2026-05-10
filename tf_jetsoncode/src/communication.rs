@@ -3,7 +3,6 @@ use crate::communication::receive_onboard_vision::receive_onboard_vision;
 use crate::communication::teensy_communication::teensy_communication;
 use crate::config;
 use crate::proto::CpRobot;
-use bitflags::bitflags;
 use std::sync::Arc;
 use tokio::sync::{Mutex, Notify};
 
@@ -23,6 +22,7 @@ pub struct VisionMsg {
 // Teensy data
 /// Raw HID Msg from the Teensy
 #[repr(C)]
+#[derive(Debug, Default)]
 pub struct TeensyRecMSG {
   // Bitflags:
   // Bit 0: Error
@@ -59,19 +59,10 @@ impl TeensyRecMSG {
     self.flags & (1 << (8 + idx)) != 0
   }
 }
-impl Default for TeensyRecMSG {
-  fn default() -> Self {
-    Self {
-      flags: RecFlags(Default::default()),
-      batt_level: 0,
-      orientation: 0,
-    }
-  }
-}
 
 /// Raw HID Msg for the Teensy
 #[repr(C)]
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct TeensySendMsg {
   // Bitflags:
   // Bit 0: Error
@@ -83,7 +74,7 @@ pub struct TeensySendMsg {
   // Bit 6:
   // Bit 7:
   // Bit 8-15: LEDS
-  pub flags: u32,
+  pub flags: u16,
   // The general GC State, so the robot follows the `HALT` and `STOP` command
   pub state: u8,
   // How strong to kick
@@ -102,28 +93,51 @@ impl TeensySendMsg {
   pub fn encode(&self) -> [u8; Self::SIZE] {
     let mut buf = [0u8; Self::SIZE];
 
+    // flags (u16)
+    buf[0..2].copy_from_slice(&self.flags.to_le_bytes());
+
+    // u8 fields
+    buf[2] = self.state;
+    buf[3] = self.kick_pwr;
+    buf[4] = self.dribbler_pwr;
+
+    // u16 fields
+    buf[5..7].copy_from_slice(&self.dir.to_le_bytes());
+    buf[7..9].copy_from_slice(&self.speed.to_le_bytes());
+    buf[9..11].copy_from_slice(&self.orient.to_le_bytes());
+
+
     buf
   }
-}
-impl Default for TeensySendMsg {
-  fn default() -> Self {
-    Self {
-      flags: ,
-      state: 0,
-      kick_pwr: 0,
-      dribbler_pwr: 0,
-      dir: 0,
-      speed: 0,
-      orient: 0,
-    }
+
+  pub fn set_flag(&mut self, flag: u16) {
+    self.flags |= flag;
+  }
+
+  pub fn clear_flag(&mut self, flag: u16) {
+    self.flags &= !flag;
+  }
+
+  pub fn has_flag(&self, flag: u16) -> bool {
+    (self.flags & flag) != 0
   }
 }
+pub mod send_flags {
+  pub const ERROR: u16    = 1 << 0;
+  pub const KICK: u16     = 1 << 1;
+  pub const CHIP: u16     = 1 << 2;
+  pub const DRIBBLER: u16 = 1 << 3;
+  // 8–15 reserved for LEDs etc.
+}
+
 
 #[derive(Default)]
 struct TeensyLastState {
   seq: u64,
   payload: Option<[u8; 11]>,
 }
+
+
 
 /// Outbound Teensy handle (RobotCode -> Teensy).
 ///
