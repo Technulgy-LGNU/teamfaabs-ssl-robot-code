@@ -14,3 +14,5 @@ tf_jetsoncode/.vscode
 teensy_code/.idea
 teensy_code/target/
 teensy_code/.pio
+
+teensy_code/.vscode/

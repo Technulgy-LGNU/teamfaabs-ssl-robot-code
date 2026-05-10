@@ -90,11 +90,14 @@ async fn main() {
 
     // Buttons
     // React to button presses
-    for i in 0..15 {
-      if teensy_data.button(i) {
-        println!("Button {} pressed", i);
-      }
-    }
+    // for i in 0..15 {
+    //   if teensy_data.button(i) {
+    //     println!("Button {} pressed", i);
+    //   }
+    // }
+    dbg!(&teensy_data);
+    println!("Chip Ready Ball: {:?}", teensy_data.chip_ready());
+    println!("Has Ball: {:?}", teensy_data.has_ball());
 
     // Orca
     let world = WorldSnapshot::from_cp(
@@ -151,6 +154,9 @@ async fn main() {
     let orca_cmd = orca.latest();
     robot_msg = nav_command_to_teensy(robot_msg, orca_cmd);
 
+    robot_msg.dir = 1000;
+    robot_msg.speed = 200;
+    robot_msg.orient = 90;
     let buf = robot_msg.encode();
     tx.publish(buf).await;
 

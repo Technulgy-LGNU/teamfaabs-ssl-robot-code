@@ -94,6 +94,7 @@ impl TeensySendMsg {
     let mut buf = [0u8; Self::SIZE];
 
     // flags (u16)
+    
     buf[0..2].copy_from_slice(&self.flags.to_le_bytes());
 
     // u8 fields
@@ -105,7 +106,6 @@ impl TeensySendMsg {
     buf[5..7].copy_from_slice(&self.dir.to_le_bytes());
     buf[7..9].copy_from_slice(&self.speed.to_le_bytes());
     buf[9..11].copy_from_slice(&self.orient.to_le_bytes());
-
 
     buf
   }

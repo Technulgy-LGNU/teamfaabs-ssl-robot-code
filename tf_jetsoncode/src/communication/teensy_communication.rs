@@ -30,7 +30,7 @@ pub async fn teensy_communication(cfg: &config::Config, tx: EventShare, rx: Teen
         match teensy.read(&mut buf) {
           Ok(size) if size >= 6 => {
             let msg = TeensyRecMSG {
-              flags: u32::from_be_bytes([buf[0], buf[1], buf[2], buf[3]]),
+              flags: u32::from_le_bytes([buf[0], buf[1], buf[2], buf[3]]),
               batt_level: buf[4],
               orientation: buf[5],
             };
@@ -57,7 +57,11 @@ pub async fn teensy_communication(cfg: &config::Config, tx: EventShare, rx: Teen
       if let Some((seq, payload)) = rx.try_latest_after(last_seq).await {
         last_seq = seq;
 
-        if let Err(e) = teensy.write(&payload) {
+        let mut packet = [0u8; 65];
+        packet[0] = 0;
+        packet[1..12].copy_from_slice(&payload);
+
+        if let Err(e) = teensy.write(&packet) {
           eprintln!("Failed to write to Teensy HID device: {}", e);
         }
       } else {
