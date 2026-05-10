@@ -1,15 +1,15 @@
-use tokio::sync::{Mutex, Notify};
-use std::sync::Arc;
-use bitflags::bitflags;
 use crate::communication::receive_cp::receive_cp;
 use crate::communication::receive_onboard_vision::receive_onboard_vision;
 use crate::communication::teensy_communication::teensy_communication;
 use crate::config;
 use crate::proto::CpRobot;
+use bitflags::bitflags;
+use std::sync::Arc;
+use tokio::sync::{Mutex, Notify};
 
 pub mod receive_cp;
-pub mod send_cp;
 pub mod receive_onboard_vision;
+pub mod send_cp;
 pub mod teensy_communication;
 
 /// Raw Stream from the OnBoard Jetson Vision
@@ -17,29 +17,10 @@ pub mod teensy_communication;
 pub struct VisionMsg {
   pub x: f32,
   pub y: f32,
-  pub size: f32
+  pub size: f32,
 }
 
 // Teensy data
-bitflags! {
-  #[derive(Debug, Clone, Copy)]
-  /// Teensy send flags
-  pub struct SendFlags: u16 {
-      const ERROR    = 1 << 0;
-      const KICK     = 1 << 1;
-      const CHIP     = 1 << 2;
-      const DRIBBLER = 1 << 3;
-  }
-
-  #[derive(Debug, Clone, Copy)]
-    pub struct RecFlags: u32 {
-        const ERROR       = 1 << 0;
-        const HAS_BALL    = 1 << 1;
-        const KICK_READY  = 1 << 2;
-        const CHIP_READY  = 1 << 3;
-    }
-}
-
 /// Raw HID Msg from the Teensy
 #[repr(C)]
 pub struct TeensyRecMSG {
@@ -53,13 +34,29 @@ pub struct TeensyRecMSG {
   // Bit 6:
   // Bit 7:
   // Bit 8-31: Buttons followed by dip-switches
-  pub flags: RecFlags,
+  pub flags: u32,
   pub batt_level: u8,
   pub orientation: u8,
 }
 impl TeensyRecMSG {
+  pub fn error(&self) -> bool {
+    self.flags & (1 << 0) != 0
+  }
+
+  pub fn has_ball(&self) -> bool {
+    self.flags & (1 << 1) != 0
+  }
+
+  pub fn kick_ready(&self) -> bool {
+    self.flags & (1 << 2) != 0
+  }
+
+  pub fn chip_ready(&self) -> bool {
+    self.flags & (1 << 3) != 0
+  }
+
   pub fn button(&self, idx: u8) -> bool {
-    self.flags.bits() & (1 << (8 + idx)) != 0
+    self.flags & (1 << (8 + idx)) != 0
   }
 }
 impl Default for TeensyRecMSG {
@@ -86,7 +83,7 @@ pub struct TeensySendMsg {
   // Bit 6:
   // Bit 7:
   // Bit 8-15: LEDS
-  pub flags: SendFlags,
+  pub flags: u32,
   // The general GC State, so the robot follows the `HALT` and `STOP` command
   pub state: u8,
   // How strong to kick
@@ -105,26 +102,13 @@ impl TeensySendMsg {
   pub fn encode(&self) -> [u8; Self::SIZE] {
     let mut buf = [0u8; Self::SIZE];
 
-    // flags
-    buf[0..2].copy_from_slice(&self.flags.bits().to_le_bytes());
-
-    // single-byte fields
-    buf[2] = self.state;
-    buf[3] = self.kick_pwr;
-    buf[4] = self.dribbler_pwr;
-
-    // u16 values
-    buf[5..7].copy_from_slice(&self.dir.to_le_bytes());
-    buf[7..9].copy_from_slice(&self.speed.to_le_bytes());
-    buf[9..11].copy_from_slice(&self.orient.to_le_bytes());
-
     buf
   }
 }
 impl Default for TeensySendMsg {
   fn default() -> Self {
     Self {
-      flags: SendFlags(Default::default()),
+      flags: ,
       state: 0,
       kick_pwr: 0,
       dribbler_pwr: 0,

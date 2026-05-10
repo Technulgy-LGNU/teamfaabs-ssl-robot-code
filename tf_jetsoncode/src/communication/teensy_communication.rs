@@ -1,4 +1,4 @@
-use crate::communication::{EventShare, RecFlags, TeensyOut, TeensyRecMSG};
+use crate::communication::{EventShare, TeensyOut, TeensyRecMSG};
 use crate::config;
 
 pub async fn teensy_communication(cfg: &config::Config, tx: EventShare, rx: TeensyOut) {
@@ -22,17 +22,15 @@ pub async fn teensy_communication(cfg: &config::Config, tx: EventShare, rx: Teen
   }
 
   tokio::spawn(async move {
-    let mut buf = [0u8; 512];
+    let mut buf = [0u8; 64];
     let mut last_seq: u64 = 0;
 
     loop {
       loop {
         match teensy.read(&mut buf) {
           Ok(size) if size >= 6 => {
-            let flags = u32::from_be_bytes([buf[0], buf[1], buf[2], buf[3]]);
-
             let msg = TeensyRecMSG {
-              flags: RecFlags::from_bits_retain(flags),
+              flags: u32::from_be_bytes([buf[0], buf[1], buf[2], buf[3]]),
               batt_level: buf[4],
               orientation: buf[5],
             };
@@ -43,7 +41,10 @@ pub async fn teensy_communication(cfg: &config::Config, tx: EventShare, rx: Teen
           Ok(_) => break,
           Err(e) => {
             let msg = e.to_string();
-            if msg.contains("Would block") || msg.contains("would block") || msg.contains("Resource temporarily unavailable") {
+            if msg.contains("Would block")
+              || msg.contains("would block")
+              || msg.contains("Resource temporarily unavailable")
+            {
               break;
             }
 

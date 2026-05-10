@@ -8,8 +8,8 @@ port = 1024
 port_outgoing = 8129
 
 [teensy]
-vid = 5824
-pid = 1152
+vid = 0x16C0
+pid = 0x0486
 
 [field]
 width = 9000
