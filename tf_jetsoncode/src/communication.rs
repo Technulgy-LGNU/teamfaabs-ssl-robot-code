@@ -86,9 +86,10 @@ pub struct TeensySendMsg {
   pub dir: u16,
   pub speed: u16,
   pub orient: u16,
+  pub self_orient: u16,
 }
 impl TeensySendMsg {
-  pub const SIZE: usize = 11;
+  pub const SIZE: usize = 13;
 
   pub fn encode(&self) -> [u8; Self::SIZE] {
     let mut buf = [0u8; Self::SIZE];
@@ -106,6 +107,7 @@ impl TeensySendMsg {
     buf[5..7].copy_from_slice(&self.dir.to_le_bytes());
     buf[7..9].copy_from_slice(&self.speed.to_le_bytes());
     buf[9..11].copy_from_slice(&self.orient.to_le_bytes());
+    buf[11..13].copy_from_slice(&self.self_orient.to_le_bytes());
 
     buf
   }
@@ -134,7 +136,7 @@ pub mod send_flags {
 #[derive(Default)]
 struct TeensyLastState {
   seq: u64,
-  payload: Option<[u8; 11]>,
+  payload: Option<[u8; 13]>,
 }
 
 
@@ -158,7 +160,7 @@ impl TeensyOut {
   }
 
   /// Publish a new binary payload.
-  pub async fn publish(&self, payload: [u8; 11]) {
+  pub async fn publish(&self, payload: [u8; 13]) {
     let mut lock = self.state.lock().await;
     lock.seq = lock.seq.wrapping_add(1);
     lock.payload = Some(payload);
@@ -167,7 +169,7 @@ impl TeensyOut {
   }
 
   /// Return the latest payload if it is newer than `last_seq`, otherwise `None`.
-  pub async fn try_latest_after(&self, last_seq: u64) -> Option<(u64, [u8; 11])> {
+  pub async fn try_latest_after(&self, last_seq: u64) -> Option<(u64, [u8; 13])> {
     let lock = self.state.lock().await;
 
     if lock.seq != last_seq {

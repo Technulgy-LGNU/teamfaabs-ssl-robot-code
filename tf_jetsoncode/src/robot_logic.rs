@@ -8,14 +8,14 @@ pub mod goalie;
 
 
 pub fn command(cfg: &config::Config, cp_data: &CpRobot, orca: &OrcaHandle, world: &WorldSnapshot, vision_data: &VisionMsg, mut msg: TeensySendMsg) -> TeensySendMsg {
-  let robot_self: CpTrackedRobot;
+  let mut robot_self: CpTrackedRobot = Default::default();
   if cfg.robot_team == "yellow"  {
     robot_self = *cp_data.robots_yellow.iter().find(|r| r.robot_id == cfg.robot_id as u32).unwrap_or_else(|| {
-      panic!("Robot with id {} not found in yellow team", cfg.robot_id);
+        return &robot_self;
     });
   } else if cfg.robot_team == "blue" {
     robot_self = *cp_data.robots_blue.iter().find(|r| r.robot_id == cfg.robot_id as u32).unwrap_or_else(|| {
-      panic!("Robot with id {} not found in blue team", cfg.robot_id);
+        return &robot_self;
     });
   } else {
     panic!("Unknown team: {}", cfg.robot_team);

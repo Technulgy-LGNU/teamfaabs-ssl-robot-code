@@ -33,7 +33,7 @@ async fn main() {
   // Udp Socket to send data back to the CrashPilot
   let upd_socket = match tokio::net::UdpSocket::bind(format!(
     "0.0.0.0:{}",
-    config.cp_config.port_outgoing
+    config.cp_config.port_outgoing+2
   ))
   .await
   {
@@ -46,10 +46,10 @@ async fn main() {
   // Orca Params & Handlers
   let params = OrcaParams {
     time_horizon_ms: 4000,
-    safety_margin_mm: 100,
+    safety_margin_mm: 10,
     default_robot_radius_mm: 90,
-    time_step_ms: 8,
-    responsibility: 0.7,
+    time_step_ms: 4,
+    responsibility: 0.2,
     run_blocking: true,
   };
   let orca = OrcaHandle::spawn(params);
@@ -61,6 +61,7 @@ async fn main() {
   let mut vision_data: communication::VisionMsg = Default::default();
   let mut teensy_data: communication::TeensyRecMSG = Default::default();
   let mut robot_msg: communication::TeensySendMsg = Default::default();
+  let mut robot_self: proto::CpTrackedRobot = Default::default();
 
   // The rest of the code should not depend on
   // late packets, so we use tokio::time::tick to
@@ -88,6 +89,19 @@ async fn main() {
       teensy_data = packet;
     }
 
+    // Self
+    if config.robot_team == "yellow"  {
+      robot_self = *cp_data.robots_yellow.iter().find(|r| r.robot_id == config.robot_id as u32).unwrap_or_else(|| {
+          return &robot_self;
+      });
+    } else if config.robot_team == "blue" {
+      robot_self = *cp_data.robots_blue.iter().find(|r| r.robot_id == config.robot_id as u32).unwrap_or_else(|| {
+        return &robot_self;
+      });
+    } else {
+      panic!("Unknown team: {}", config.robot_team);
+    }
+
     // Buttons
     // React to button presses
     // for i in 0..15 {
@@ -95,9 +109,6 @@ async fn main() {
     //     println!("Button {} pressed", i);
     //   }
     // }
-    dbg!(&teensy_data);
-    println!("Chip Ready Ball: {:?}", teensy_data.chip_ready());
-    println!("Has Ball: {:?}", teensy_data.has_ball());
 
     // Orca
     let world = WorldSnapshot::from_cp(
@@ -105,6 +116,8 @@ async fn main() {
       config.robot_id as u32,
       params.default_robot_radius_mm,
     );
+
+    println!("Incomfing CP_Data: {:?}", cp_data);
 
     // Game Logic
     match cp_data.cmd.state {
@@ -129,6 +142,7 @@ async fn main() {
         orca.publish(OrcaRequest { world, intent });
       }
       3 => {
+          println!("3");
         // Free to listen to commands
         robot_msg = command(&config, &cp_data, &orca, &world, &vision_data, robot_msg);
       }
@@ -150,13 +164,23 @@ async fn main() {
 
     // After logic, send new robot command
     robot_msg.state = cp_data.cmd.state as u8;
+    let mut orient = robot_self.orientation % 360;
+    if orient.is_negative() {
+        orient += 360;
+    }
+    robot_msg.self_orient = orient as u16;
 
     let orca_cmd = orca.latest();
+    println!("Orca CMD raw: {:?}", orca_cmd);
     robot_msg = nav_command_to_teensy(robot_msg, orca_cmd);
 
-    robot_msg.dir = 1000;
-    robot_msg.speed = 200;
-    robot_msg.orient = 90;
+    robot_msg.dir = robot_msg.dir % 360;
+    
+    // Print data for testing
+    println!("Direction from Orca: {:?}", robot_msg.dir);
+    println!("Speed from Orca: {:?}", robot_msg.speed);
+    println!("Self Dir: {:?}", robot_msg.self_orient);
+
     let buf = robot_msg.encode();
     tx.publish(buf).await;
 

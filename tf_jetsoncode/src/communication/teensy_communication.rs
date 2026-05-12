@@ -59,7 +59,7 @@ pub async fn teensy_communication(cfg: &config::Config, tx: EventShare, rx: Teen
 
         let mut packet = [0u8; 65];
         packet[0] = 0;
-        packet[1..12].copy_from_slice(&payload);
+        packet[1..14].copy_from_slice(&payload);
 
         if let Err(e) = teensy.write(&packet) {
           eprintln!("Failed to write to Teensy HID device: {}", e);
