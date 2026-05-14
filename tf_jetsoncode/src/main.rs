@@ -13,6 +13,11 @@ mod config;
 mod proto;
 mod robot_logic;
 
+
+// Constants
+const TEENSY_SEND_MSG_SIZE: usize = 19;
+const TEENSY_RECEIVE_MSG_SIZE: usize = 6;
+
 #[tokio::main]
 async fn main() {
   // Get config
@@ -91,12 +96,12 @@ async fn main() {
 
     // Self
     if config.robot_team == "yellow"  {
-      robot_self = *cp_data.robots_yellow.iter().find(|r| r.robot_id == config.robot_id as u32).unwrap_or_else(|| {
-          return &robot_self;
+      robot_self = *cp_data.robots_yellow.iter().find(|r| r.robot_id == config.robot_id as u32).unwrap_or({
+          &robot_self
       });
     } else if config.robot_team == "blue" {
-      robot_self = *cp_data.robots_blue.iter().find(|r| r.robot_id == config.robot_id as u32).unwrap_or_else(|| {
-        return &robot_self;
+      robot_self = *cp_data.robots_blue.iter().find(|r| r.robot_id == config.robot_id as u32).unwrap_or({
+        &robot_self
       });
     } else {
       panic!("Unknown team: {}", config.robot_team);
@@ -169,13 +174,15 @@ async fn main() {
         orient += 360;
     }
     robot_msg.self_orient = orient as u16;
+    robot_msg.vel_x = robot_self.vel.unwrap_or_default().x as i16;
+    robot_msg.vel_y = robot_self.vel.unwrap_or_default().y as i16;
 
     let orca_cmd = orca.latest();
     println!("Orca CMD raw: {:?}", orca_cmd);
     robot_msg = nav_command_to_teensy(robot_msg, orca_cmd);
 
-    robot_msg.dir = robot_msg.dir % 360;
-    
+    robot_msg.dir %= 360;
+
     // Print data for testing
     println!("Direction from Orca: {:?}", robot_msg.dir);
     println!("Speed from Orca: {:?}", robot_msg.speed);

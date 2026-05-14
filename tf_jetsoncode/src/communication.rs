@@ -1,7 +1,7 @@
 use crate::communication::receive_cp::receive_cp;
 use crate::communication::receive_onboard_vision::receive_onboard_vision;
 use crate::communication::teensy_communication::teensy_communication;
-use crate::config;
+use crate::{config, TEENSY_SEND_MSG_SIZE};
 use crate::proto::CpRobot;
 use std::sync::Arc;
 use tokio::sync::{Mutex, Notify};
@@ -86,16 +86,17 @@ pub struct TeensySendMsg {
   pub dir: u16,
   pub speed: u16,
   pub orient: u16,
+  // Own direction and velocity as VecI2
   pub self_orient: u16,
+  pub vel_x: i16,
+  pub vel_y: i16,
 }
 impl TeensySendMsg {
-  pub const SIZE: usize = 13;
-
-  pub fn encode(&self) -> [u8; Self::SIZE] {
-    let mut buf = [0u8; Self::SIZE];
+  pub fn encode(&self) -> [u8; TEENSY_SEND_MSG_SIZE] {
+    let mut buf = [0u8; TEENSY_SEND_MSG_SIZE];
 
     // flags (u16)
-    
+
     buf[0..2].copy_from_slice(&self.flags.to_le_bytes());
 
     // u8 fields
@@ -104,10 +105,18 @@ impl TeensySendMsg {
     buf[4] = self.dribbler_pwr;
 
     // u16 fields
+    // Direction
     buf[5..7].copy_from_slice(&self.dir.to_le_bytes());
     buf[7..9].copy_from_slice(&self.speed.to_le_bytes());
     buf[9..11].copy_from_slice(&self.orient.to_le_bytes());
+    // Own direction
     buf[11..13].copy_from_slice(&self.self_orient.to_le_bytes());
+
+    // i16 fields
+    // Velocity as VecI2
+    buf[13..17].copy_from_slice(&self.vel_x.to_le_bytes());
+    buf[17..19].copy_from_slice(&self.vel_y.to_le_bytes());
+
 
     buf
   }
@@ -136,7 +145,7 @@ pub mod send_flags {
 #[derive(Default)]
 struct TeensyLastState {
   seq: u64,
-  payload: Option<[u8; 13]>,
+  payload: Option<[u8; TEENSY_SEND_MSG_SIZE]>,
 }
 
 
@@ -160,7 +169,7 @@ impl TeensyOut {
   }
 
   /// Publish a new binary payload.
-  pub async fn publish(&self, payload: [u8; 13]) {
+  pub async fn publish(&self, payload: [u8; TEENSY_SEND_MSG_SIZE]) {
     let mut lock = self.state.lock().await;
     lock.seq = lock.seq.wrapping_add(1);
     lock.payload = Some(payload);
@@ -169,7 +178,7 @@ impl TeensyOut {
   }
 
   /// Return the latest payload if it is newer than `last_seq`, otherwise `None`.
-  pub async fn try_latest_after(&self, last_seq: u64) -> Option<(u64, [u8; 13])> {
+  pub async fn try_latest_after(&self, last_seq: u64) -> Option<(u64, [u8; TEENSY_SEND_MSG_SIZE])> {
     let lock = self.state.lock().await;
 
     if lock.seq != last_seq {

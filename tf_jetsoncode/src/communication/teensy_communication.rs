@@ -1,5 +1,5 @@
 use crate::communication::{EventShare, TeensyOut, TeensyRecMSG};
-use crate::config;
+use crate::{config, TEENSY_RECEIVE_MSG_SIZE, TEENSY_SEND_MSG_SIZE};
 use std::time::Duration;
 use tokio::time::sleep;
 
@@ -61,7 +61,7 @@ pub async fn teensy_communication(cfg: &config::Config, tx: EventShare, rx: Teen
         // Read as many incoming packets as available.
         loop {
           match teensy.read(&mut buf) {
-            Ok(size) if size >= 6 => {
+            Ok(size) if size >= TEENSY_RECEIVE_MSG_SIZE => {
               let msg = TeensyRecMSG {
                 flags: u32::from_le_bytes([buf[0], buf[1], buf[2], buf[3]]),
                 batt_level: buf[4],
@@ -99,7 +99,7 @@ pub async fn teensy_communication(cfg: &config::Config, tx: EventShare, rx: Teen
           // HID report 0 first byte reserved for report-id in many platforms.
           let mut packet = [0u8; 65];
           packet[0] = 0;
-          packet[1..14].copy_from_slice(&payload);
+          packet[1..(TEENSY_SEND_MSG_SIZE+1)].copy_from_slice(&payload);
 
           if let Err(e) = teensy.write(&packet) {
             eprintln!("Failed to write to Teensy HID device: {}", e);

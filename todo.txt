@@ -1,8 +1,0 @@
-- Teensy Reconnect
-- CP Reconnect
-- Self.Velo (Vec2U)
-- Self.Orientation (Degree)
-
-- Logic
-
-- Orca tunning
