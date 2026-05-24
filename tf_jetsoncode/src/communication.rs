@@ -114,9 +114,8 @@ impl TeensySendMsg {
 
     // i16 fields
     // Velocity as VecI2
-    buf[13..17].copy_from_slice(&self.vel_x.to_le_bytes());
-    buf[17..19].copy_from_slice(&self.vel_y.to_le_bytes());
-
+    buf[13..15].copy_from_slice(&self.vel_x.to_le_bytes());
+    buf[15..17].copy_from_slice(&self.vel_y.to_le_bytes());
 
     buf
   }

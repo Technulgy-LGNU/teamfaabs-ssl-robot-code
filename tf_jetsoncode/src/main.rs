@@ -4,7 +4,7 @@ use crate::proto::RobotCp;
 use crate::robot_logic::command;
 use crate::robot_logic::goalie::goalie;
 use crate::robot_logic::orca::{
-  NavIntent, OrcaHandle, OrcaParams, OrcaRequest, Vec2i, WorldSnapshot, nav_command_to_teensy,
+  NavIntent, OrcaHandle, OrcaParams, OrcaRequest, WorldSnapshot, nav_command_to_teensy,
 };
 use std::time::Duration;
 
@@ -13,9 +13,8 @@ mod config;
 mod proto;
 mod robot_logic;
 
-
 // Constants
-const TEENSY_SEND_MSG_SIZE: usize = 19;
+const TEENSY_SEND_MSG_SIZE: usize = 17;
 const TEENSY_RECEIVE_MSG_SIZE: usize = 6;
 
 #[tokio::main]
@@ -36,17 +35,15 @@ async fn main() {
   let tx = communication.teensy;
 
   // Udp Socket to send data back to the CrashPilot
-  let upd_socket = match tokio::net::UdpSocket::bind(format!(
-    "0.0.0.0:{}",
-    config.cp_config.port_outgoing+2
-  ))
-  .await
-  {
-    Ok(s) => s,
-    Err(e) => {
-      panic!("Failed to create udp socket for sending cp data: {}", e);
-    }
-  };
+  let upd_socket =
+    match tokio::net::UdpSocket::bind(format!("0.0.0.0:{}", config.cp_config.port_outgoing + 2))
+      .await
+    {
+      Ok(s) => s,
+      Err(e) => {
+        panic!("Failed to create udp socket for sending cp data: {}", e);
+      }
+    };
 
   // Orca Params & Handlers
   let params = OrcaParams {
@@ -95,14 +92,18 @@ async fn main() {
     }
 
     // Self
-    if config.robot_team == "yellow"  {
-      robot_self = *cp_data.robots_yellow.iter().find(|r| r.robot_id == config.robot_id as u32).unwrap_or({
-          &robot_self
-      });
+    if config.robot_team == "yellow" {
+      robot_self = *cp_data
+        .robots_yellow
+        .iter()
+        .find(|r| r.robot_id == config.robot_id as u32)
+        .unwrap_or( &robot_self );
     } else if config.robot_team == "blue" {
-      robot_self = *cp_data.robots_blue.iter().find(|r| r.robot_id == config.robot_id as u32).unwrap_or({
-        &robot_self
-      });
+      robot_self = *cp_data
+        .robots_blue
+        .iter()
+        .find(|r| r.robot_id == config.robot_id as u32)
+        .unwrap_or( &robot_self );
     } else {
       panic!("Unknown team: {}", config.robot_team);
     }
@@ -126,6 +127,9 @@ async fn main() {
 
     // Game Logic
     match cp_data.cmd.state {
+      0 => {
+        println!("UNKNOWN");
+      }
       1 => {
         // Robot is not allowed to move
 
@@ -135,21 +139,11 @@ async fn main() {
       2 => {
         // Robot is allowed to move with a max speed of
         // 1,5m/s (1500mm/s) & stay away from ball 500mm
-
-        let intent = NavIntent::GoToPosition {
-          target_pos_mm: Vec2i {
-            x: cp_data.cmd.pos.unwrap_or_default().x,
-            y: cp_data.cmd.pos.unwrap_or_default().y,
-          },
-          max_speed_mm_s: 1500,
-        };
-
-        orca.publish(OrcaRequest { world, intent });
+        robot_msg = command(&config, &cp_data, &orca, &world, &vision_data, robot_msg, true).await;
       }
       3 => {
-          println!("3");
         // Free to listen to commands
-        robot_msg = command(&config, &cp_data, &orca, &world, &vision_data, robot_msg);
+        robot_msg = command(&config, &cp_data, &orca, &world, &vision_data, robot_msg, false).await;
       }
       4 => {
         // Goalie, move into penalty area and protect the goal
@@ -169,24 +163,23 @@ async fn main() {
 
     // After logic, send new robot command
     robot_msg.state = cp_data.cmd.state as u8;
+    robot_msg.orient = cp_data.cmd.orientation() as u16;
     let mut orient = robot_self.orientation % 360;
     if orient.is_negative() {
-        orient += 360;
+      orient += 360;
     }
     robot_msg.self_orient = orient as u16;
     robot_msg.vel_x = robot_self.vel.unwrap_or_default().x as i16;
     robot_msg.vel_y = robot_self.vel.unwrap_or_default().y as i16;
 
-    let orca_cmd = orca.latest();
-    println!("Orca CMD raw: {:?}", orca_cmd);
-    robot_msg = nav_command_to_teensy(robot_msg, orca_cmd);
-
-    robot_msg.dir %= 360;
+    // let orca_cmd = orca.latest();
+    // println!("Orca CMD raw: {:?}", orca_cmd);
+    // robot_msg = nav_command_to_teensy(robot_msg, orca_cmd);
 
     // Print data for testing
-    println!("Direction from Orca: {:?}", robot_msg.dir);
-    println!("Speed from Orca: {:?}", robot_msg.speed);
-    println!("Self Dir: {:?}", robot_msg.self_orient);
+    // println!("Direction from Orca: {:?}", robot_msg.dir);
+    // println!("Speed from Orca: {:?}", robot_msg.speed);
+    // println!("Self Dir: {:?}", robot_msg.self_orient);
 
     let buf = robot_msg.encode();
     tx.publish(buf).await;
