@@ -17,3 +17,4 @@ height = 6000
 runoff_width = 300
 penalty_area_width = 2000
 penalty_area_height = 1000
+goal_width = 1600

@@ -67,6 +67,7 @@ pub struct FieldConfig {
   runoff_width: u32,
   penalty_area_width: u32,
   penalty_area_height: u32,
+  goal_width: u32,
 }
 impl Default for FieldConfig {
   fn default() -> Self {
@@ -77,6 +78,7 @@ impl Default for FieldConfig {
       runoff_width: 300,
       penalty_area_width: 2000,
       penalty_area_height: 1000,
+      goal_width: 1600,
     }
   }
 }

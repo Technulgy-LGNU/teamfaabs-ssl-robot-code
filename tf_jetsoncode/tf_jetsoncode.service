@@ -1,0 +1,19 @@
+[Unit]
+Description=tf_jetsoncode Robot Service
+After=network.target
+
+[Service]
+Type=simple
+User=robotik
+WorkingDirectory=/home/robotik/tf_jetsoncode
+ExecStart=/home/robotik/tf_jetsoncode/tf_jetsoncode
+
+Restart=always
+RestartSec=2
+
+# optional useful logging
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
