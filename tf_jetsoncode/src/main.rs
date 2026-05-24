@@ -1,4 +1,4 @@
-use crate::communication::communication_receiver;
+use crate::communication::{communication_receiver, send_flags};
 use crate::communication::send_cp::send_cp;
 use crate::proto::RobotCp;
 use crate::robot_logic::command;
@@ -52,7 +52,7 @@ async fn main() {
     default_robot_radius_mm: 90,
     time_step_ms: 4,
     responsibility: 0.2,
-    run_blocking: true,
+    run_blocking: false,
   };
   let mut orca = OrcaHandle::spawn(params);
 
@@ -69,7 +69,7 @@ async fn main() {
   // late packets, so we use tokio::time::tick to
   // have predictably program time
 
-  let mut tick = tokio::time::interval(Duration::from_millis(8)); // ~120 Hz
+  let mut tick = tokio::time::interval(Duration::from_millis(4)); // ~240 Hz
   tick.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
 
   loop {
@@ -110,11 +110,11 @@ async fn main() {
 
     // Buttons
     // React to button presses
-    // for i in 0..15 {
-    //   if teensy_data.button(i) {
-    //     println!("Button {} pressed", i);
-    //   }
-    // }
+    for i in 0..15 {
+      if teensy_data.button(i) {
+        println!("Button {} pressed", i);
+      }
+    }
 
     // Orca
     let world = WorldSnapshot::from_cp(
@@ -123,12 +123,15 @@ async fn main() {
       params.default_robot_radius_mm,
     );
 
+    println!("\x1b[32m=================\x1b[0m");
     println!("Incomfing CP_Data: {:?}", cp_data);
+    println!("\x1b[32m=================\x1b[0m");
 
     // Game Logic
     match cp_data.cmd.state {
       0 => {
         println!("UNKNOWN");
+        robot_msg.set_flag(send_flags::ERROR);
       }
       1 => {
         // Robot is not allowed to move
@@ -172,15 +175,14 @@ async fn main() {
     robot_msg.vel_x = robot_self.vel.unwrap_or_default().x as i16;
     robot_msg.vel_y = robot_self.vel.unwrap_or_default().y as i16;
 
-    // let orca_cmd = orca.latest();
-    // println!("Orca CMD raw: {:?}", orca_cmd);
-    // robot_msg = nav_command_to_teensy(robot_msg, orca_cmd);
-
     // Print data for testing
-    // println!("Direction from Orca: {:?}", robot_msg.dir);
-    // println!("Speed from Orca: {:?}", robot_msg.speed);
-    // println!("Self Dir: {:?}", robot_msg.self_orient);
+    println!("Direction from Orca: {:?}", robot_msg.dir);
+    println!("Speed from Orca: {:?}", robot_msg.speed);
+    println!("Self Dir: {:?}", robot_msg.self_orient);
 
+    robot_msg.set_flag(send_flags::DRIBBLER);
+    robot_msg.dribbler_pwr = 100;
+    
     let buf = robot_msg.encode();
     tx.publish(buf).await;
 

@@ -6,10 +6,10 @@ use crate::robot_logic::orca::{
   OrcaHandle, OrcaRequest, Vec2i, WorldSnapshot, nav_command_to_teensy,
 };
 
-pub mod goalie;
-pub mod orca;
 mod ball_logic;
+pub mod goalie;
 mod helpers;
+pub mod orca;
 
 pub async fn command(
   cfg: &config::Config, cp_data: &CpRobot, orca: &mut OrcaHandle, world: &WorldSnapshot,
@@ -21,17 +21,13 @@ pub async fn command(
       .robots_yellow
       .iter()
       .find(|r| r.robot_id == cfg.robot_id as u32)
-      .unwrap_or({
-        &robot_self
-      });
+      .unwrap_or(&robot_self);
   } else if cfg.robot_team.as_str() == "blue" {
     robot_self = *cp_data
       .robots_blue
       .iter()
       .find(|r| r.robot_id == cfg.robot_id as u32)
-      .unwrap_or({
-        &robot_self
-      });
+      .unwrap_or(&robot_self);
   } else {
     panic!("Unknown team: {}", cfg.robot_team);
   }
@@ -40,13 +36,15 @@ pub async fn command(
     0 => {
       // UNKNOWN
       println!("UNKNOWN");
+      msg.set_flag(send_flags::ERROR);
     }
     1 => {
       // Speed check
-      let mut speed: u32 = 0;
-      if cp_data.cmd.speed > Some(1500) && stop {
-        speed = 1500;
-      }
+      let speed = if cp_data.cmd.speed > Some(1500) && stop {
+        1500
+      } else {
+        cp_data.cmd.speed.unwrap_or_default()
+      };
 
       // Drive to pos
       let intent = orca::NavIntent::GoToPosition {
@@ -96,7 +94,15 @@ pub async fn command(
     }
     5 => {
       // Steal Ball
-      msg = get_ball(cp_data, &mut orca.clone(), world, vision_data, msg, robot_self).await;
+      msg = get_ball(
+        cp_data,
+        &mut orca.clone(),
+        world,
+        vision_data,
+        msg,
+        robot_self,
+      )
+      .await;
     }
     6 => {
       // Dribble the Ball

@@ -123,14 +123,6 @@ impl TeensySendMsg {
   pub fn set_flag(&mut self, flag: u16) {
     self.flags |= flag;
   }
-
-  pub fn clear_flag(&mut self, flag: u16) {
-    self.flags &= !flag;
-  }
-
-  pub fn has_flag(&self, flag: u16) -> bool {
-    (self.flags & flag) != 0
-  }
 }
 pub mod send_flags {
   pub const ERROR: u16    = 1 << 0;
