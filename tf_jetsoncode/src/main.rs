@@ -4,7 +4,7 @@ use crate::proto::RobotCp;
 use crate::robot_logic::command;
 use crate::robot_logic::goalie::goalie;
 use crate::robot_logic::orca::{
-  NavIntent, OrcaHandle, OrcaParams, OrcaRequest, WorldSnapshot, nav_command_to_teensy,
+  NavIntent, OrcaHandle, OrcaParams, OrcaRequest, WorldSnapshot,
 };
 use std::time::Duration;
 
@@ -54,7 +54,7 @@ async fn main() {
     responsibility: 0.2,
     run_blocking: true,
   };
-  let orca = OrcaHandle::spawn(params);
+  let mut orca = OrcaHandle::spawn(params);
 
   // Starting robot
   println!("Starting robot ...");
@@ -92,13 +92,13 @@ async fn main() {
     }
 
     // Self
-    if config.robot_team == "yellow" {
+    if config.robot_team.as_str() == "yellow" {
       robot_self = *cp_data
         .robots_yellow
         .iter()
         .find(|r| r.robot_id == config.robot_id as u32)
         .unwrap_or( &robot_self );
-    } else if config.robot_team == "blue" {
+    } else if config.robot_team.as_str() == "blue" {
       robot_self = *cp_data
         .robots_blue
         .iter()
@@ -139,11 +139,11 @@ async fn main() {
       2 => {
         // Robot is allowed to move with a max speed of
         // 1,5m/s (1500mm/s) & stay away from ball 500mm
-        robot_msg = command(&config, &cp_data, &orca, &world, &vision_data, robot_msg, true).await;
+        robot_msg = command(&config, &cp_data, &mut orca, &world, &vision_data, robot_msg, true).await;
       }
       3 => {
         // Free to listen to commands
-        robot_msg = command(&config, &cp_data, &orca, &world, &vision_data, robot_msg, false).await;
+        robot_msg = command(&config, &cp_data, &mut orca, &world, &vision_data, robot_msg, false).await;
       }
       4 => {
         // Goalie, move into penalty area and protect the goal
