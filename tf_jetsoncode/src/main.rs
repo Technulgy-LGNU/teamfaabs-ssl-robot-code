@@ -124,7 +124,7 @@ async fn main() {
     );
 
     println!("\x1b[32m=================\x1b[0m");
-    println!("Incomfing CP_Data: {:?}", cp_data);
+    println!("Incoming CP_Data: {:?}", cp_data);
     println!("\x1b[32m=================\x1b[0m");
 
     // Game Logic
@@ -142,11 +142,11 @@ async fn main() {
       2 => {
         // Robot is allowed to move with a max speed of
         // 1,5m/s (1500mm/s) & stay away from ball 500mm
-        robot_msg = command(&config, &cp_data, &mut orca, &world, &vision_data, robot_msg, true).await;
+        robot_msg = command(&config, &cp_data, &mut orca, &world, &vision_data, robot_msg, true, robot_self).await;
       }
       3 => {
         // Free to listen to commands
-        robot_msg = command(&config, &cp_data, &mut orca, &world, &vision_data, robot_msg, false).await;
+        robot_msg = command(&config, &cp_data, &mut orca, &world, &vision_data, robot_msg, false, robot_self).await;
       }
       4 => {
         // Goalie, move into penalty area and protect the goal
@@ -182,7 +182,7 @@ async fn main() {
 
     robot_msg.set_flag(send_flags::DRIBBLER);
     robot_msg.dribbler_pwr = 100;
-    
+
     let buf = robot_msg.encode();
     tx.publish(buf).await;
 

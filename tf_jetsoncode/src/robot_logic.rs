@@ -2,9 +2,8 @@ use crate::communication::{TeensySendMsg, VisionMsg, send_flags};
 use crate::config;
 use crate::proto::{CpRobot, CpTrackedRobot};
 use crate::robot_logic::ball_logic::get_ball;
-use crate::robot_logic::orca::{
-  OrcaHandle, OrcaRequest, Vec2i, WorldSnapshot, nav_command_to_teensy,
-};
+use crate::robot_logic::helpers::distance_cpv;
+use crate::robot_logic::orca::{OrcaHandle, WorldSnapshot};
 
 mod ball_logic;
 pub mod goalie;
@@ -13,25 +12,8 @@ pub mod orca;
 
 pub async fn command(
   cfg: &config::Config, cp_data: &CpRobot, orca: &mut OrcaHandle, world: &WorldSnapshot,
-  vision_data: &VisionMsg, mut msg: TeensySendMsg, stop: bool,
+  vision_data: &VisionMsg, mut msg: TeensySendMsg, stop: bool, robot_self: CpTrackedRobot,
 ) -> TeensySendMsg {
-  let mut robot_self: CpTrackedRobot = Default::default();
-  if cfg.robot_team.as_str() == "yellow" {
-    robot_self = *cp_data
-      .robots_yellow
-      .iter()
-      .find(|r| r.robot_id == cfg.robot_id as u32)
-      .unwrap_or(&robot_self);
-  } else if cfg.robot_team.as_str() == "blue" {
-    robot_self = *cp_data
-      .robots_blue
-      .iter()
-      .find(|r| r.robot_id == cfg.robot_id as u32)
-      .unwrap_or(&robot_self);
-  } else {
-    panic!("Unknown team: {}", cfg.robot_team);
-  }
-
   match cp_data.cmd.task {
     0 => {
       // UNKNOWN
@@ -46,24 +28,37 @@ pub async fn command(
         cp_data.cmd.speed.unwrap_or_default()
       };
 
-      // Drive to pos
-      let intent = orca::NavIntent::GoToPosition {
-        target_pos_mm: Vec2i {
-          x: cp_data.cmd.pos.unwrap_or_default().x,
-          y: cp_data.cmd.pos.unwrap_or_default().y,
-        },
-        max_speed_mm_s: speed,
-      };
+      println!("Distance from robot -> Ball: {:?}", distance_cpv(robot_self.pos, cp_data.cmd.pos.unwrap_or_default()));
 
-      orca.publish(OrcaRequest {
-        world: world.clone(),
-        intent,
-      });
+      // Check if near of pos, and then stop
+      /*
+      if distance_cpv(robot_self.pos, cp_data.cmd.pos.unwrap_or_default()) < 200.0 {
+        println!("Distance to point: {:?}", distance_cpv(robot_self.pos, cp_data.cmd.pos.unwrap_or_default()) < 200.0);
+        orca.publish(OrcaRequest {
+          world: world.clone(),
+          intent: NavIntent::Stop,
+        })
+      } else {
+        // Drive to pos
+        let intent = NavIntent::GoToPosition {
+          target_pos_mm: Vec2i {
+            x: cp_data.cmd.pos.unwrap_or_default().x,
+            y: cp_data.cmd.pos.unwrap_or_default().y,
+          },
+          max_speed_mm_s: speed,
+        };
+
+        orca.publish(OrcaRequest {
+          world: world.clone(),
+          intent,
+        });
+      }
 
       let orca_cmd = orca.changed().await.unwrap_or_default();
 
       println!("Orca output: {:?}", orca_cmd);
       msg = nav_command_to_teensy(msg, orca_cmd);
+      */
     }
     2 => {
       // Kick in kick dir
