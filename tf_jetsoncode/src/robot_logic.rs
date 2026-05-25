@@ -1,9 +1,10 @@
+use tracing::info;
 use crate::communication::{TeensySendMsg, VisionMsg, send_flags};
 use crate::config;
 use crate::proto::{CpRobot, CpTrackedRobot};
 use crate::robot_logic::ball_logic::get_ball;
 use crate::robot_logic::helpers::distance_cpv;
-use crate::robot_logic::orca::{OrcaHandle, WorldSnapshot};
+use crate::robot_logic::orca::{nav_command_to_teensy, NavIntent, OrcaHandle, OrcaRequest, Vec2i, WorldSnapshot};
 
 mod ball_logic;
 pub mod goalie;
@@ -31,9 +32,8 @@ pub async fn command(
       println!("Distance from robot -> Ball: {:?}", distance_cpv(robot_self.pos, cp_data.cmd.pos.unwrap_or_default()));
 
       // Check if near of pos, and then stop
-      /*
       if distance_cpv(robot_self.pos, cp_data.cmd.pos.unwrap_or_default()) < 200.0 {
-        println!("Distance to point: {:?}", distance_cpv(robot_self.pos, cp_data.cmd.pos.unwrap_or_default()) < 200.0);
+        info!("Distance to point: {:?}", distance_cpv(robot_self.pos, cp_data.cmd.pos.unwrap_or_default()) < 200.0);
         orca.publish(OrcaRequest {
           world: world.clone(),
           intent: NavIntent::Stop,
@@ -56,9 +56,8 @@ pub async fn command(
 
       let orca_cmd = orca.changed().await.unwrap_or_default();
 
-      println!("Orca output: {:?}", orca_cmd);
+      info!("Orca output: {:?}", orca_cmd);
       msg = nav_command_to_teensy(msg, orca_cmd);
-      */
     }
     2 => {
       // Kick in kick dir
@@ -112,7 +111,7 @@ pub async fn command(
       // Free kick
     }
     _ => {
-      println!("Unknown task: {}", cp_data.cmd.task);
+      info!("Unknown task: {}", cp_data.cmd.task);
     }
   }
 

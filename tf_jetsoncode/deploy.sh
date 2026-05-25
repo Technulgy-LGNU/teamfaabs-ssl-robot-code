@@ -64,7 +64,7 @@ attach_robot() {
     echo "==> Opening live logs for $ROBOT_IP"
 
     ssh -t robotik@"$ROBOT_IP" \
-        "journalctl -u tf_jetsoncode -f"
+        "journalctl -fu tf_jetsoncode -o cat"
 }
 
 if [ $# -lt 1 ]; then

@@ -7,6 +7,7 @@ use crate::robot_logic::orca::{
   NavIntent, OrcaHandle, OrcaParams, OrcaRequest, WorldSnapshot,
 };
 use std::time::Duration;
+use tracing::info;
 
 mod communication;
 mod config;
@@ -19,6 +20,11 @@ const TEENSY_RECEIVE_MSG_SIZE: usize = 6;
 
 #[tokio::main]
 async fn main() {
+  // Start tracing
+  tracing_subscriber::fmt()
+    .with_ansi(true)
+    .init();
+
   // Get config
   let config = match config::load_or_create_config("config.toml") {
     Ok(config) => config,
@@ -57,7 +63,7 @@ async fn main() {
   let mut orca = OrcaHandle::spawn(params);
 
   // Starting robot
-  println!("Starting robot ...");
+  info!("Starting robot ...");
   // Data Packets
   let mut cp_data: proto::CpRobot = Default::default();
   let mut vision_data: communication::VisionMsg = Default::default();
@@ -123,14 +129,14 @@ async fn main() {
       params.default_robot_radius_mm,
     );
 
-    println!("\x1b[32m=================\x1b[0m");
-    println!("Incoming CP_Data: {:?}", cp_data);
-    println!("\x1b[32m=================\x1b[0m");
+    info!("\x1b[32m=================\x1b[0m");
+    info!("Incoming CP_Data: {:?}", cp_data);
+    info!("\x1b[32m=================\x1b[0m");
 
     // Game Logic
     match cp_data.cmd.state {
       0 => {
-        println!("UNKNOWN");
+        info!("UNKNOWN");
         robot_msg.set_flag(send_flags::ERROR);
       }
       1 => {
@@ -176,9 +182,9 @@ async fn main() {
     robot_msg.vel_y = robot_self.vel.unwrap_or_default().y as i16;
 
     // Print data for testing
-    println!("Direction from Orca: {:?}", robot_msg.dir);
-    println!("Speed from Orca: {:?}", robot_msg.speed);
-    println!("Self Dir: {:?}", robot_msg.self_orient);
+    info!("Direction from Orca: {:?}", robot_msg.dir);
+    info!("Speed from Orca: {:?}", robot_msg.speed);
+    info!("Self Dir: {:?}", robot_msg.self_orient);
 
     robot_msg.set_flag(send_flags::DRIBBLER);
     robot_msg.dribbler_pwr = 100;
