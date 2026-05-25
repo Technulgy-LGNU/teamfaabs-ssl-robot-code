@@ -529,7 +529,7 @@ fn velocity_to_direction_deg(velocity: Vector2, robot_orientation_deg: i32) -> f
 	return 0.0;
   }
 
-  normalize_deg(velocity.y.atan2(velocity.x).to_degrees() - robot_orientation_deg as f32 + 90.0)
+  normalize_deg(velocity.y.atan2(velocity.x).to_degrees() - robot_orientation_deg as f32)
 }
 
 #[inline]
@@ -577,7 +577,7 @@ mod tests {
 	  target: vec2(1_000.0, 0.0),
 	  target_distance_mm: 1_000.0,
 	  speed_mm_s: 1_000.0,
-	  direction_deg: 90.0,
+    direction_deg: 0.0,
 	  current_speed_mm_s: 0.0,
 	  accel_hint_mm_s2: 0.0,
 	  decel_hint_mm_s2: 0.0,
@@ -585,6 +585,14 @@ mod tests {
 
 	let msg = orca_to_teensy(TeensySendMsg::default(), &plan, robot_self);
 	assert_eq!(msg.speed, 1_000);
+  }
+
+  #[test]
+  fn direction_uses_x_as_zero_degrees() {
+  assert_eq!(velocity_to_teensy_dir(vec2(1_000.0, 0.0), 0), 0);
+  assert_eq!(velocity_to_teensy_dir(vec2(0.0, 1_000.0), 0), 90);
+  assert_eq!(velocity_to_teensy_dir(vec2(-1_000.0, 0.0), 0), 180);
+  assert_eq!(velocity_to_teensy_dir(vec2(0.0, -1_000.0), 0), 270);
   }
 
   #[test]
