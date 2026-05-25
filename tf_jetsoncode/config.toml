@@ -1,5 +1,6 @@
 robot_id = 2
 robot_team = "yellow"
+robot_goal = false
 onboard_vision_socket_path = "/tmp/ov_socket"
 
 [cp_config]

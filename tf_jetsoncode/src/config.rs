@@ -8,6 +8,9 @@ use std::path::Path;
 pub struct Config {
   pub robot_id: u8,
   pub robot_team: String,
+  /// Whether we play on the x+ goal or the x-
+  /// x+ is default, if false, we play on x-
+  pub robot_goal: bool,
   pub cp_config: CrashPilotConfig,
   pub onboard_vision_socket_path: String,
   pub teensy: TeensyConfig,
@@ -18,6 +21,7 @@ impl Default for Config {
     Self {
       robot_id: 1,
       robot_team: "yellow".to_string(),
+      robot_goal: false,
       cp_config: CrashPilotConfig::default(),
       onboard_vision_socket_path: "/tmp/ov_socket".to_string(),
       teensy: Default::default(),
@@ -68,6 +72,7 @@ pub struct FieldConfig {
   penalty_area_height: u32,
   goal_width: u32,
 }
+
 impl Default for FieldConfig {
   fn default() -> Self {
     // Default values for DIV-B
