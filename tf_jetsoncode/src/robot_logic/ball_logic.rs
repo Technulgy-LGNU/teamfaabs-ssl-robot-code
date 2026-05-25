@@ -1,20 +1,34 @@
 use crate::communication::{TeensySendMsg, VisionMsg};
+use crate::config::Config;
 use crate::proto::{CpRobot, CpTrackedRobot, Vector2f};
 use crate::robot_logic::helpers::{calculate_vector, distance_cpv};
+use crate::robot_logic::orca::{self, OrcaOptions};
 use std::f32::consts::PI;
 
 /// Function drives near the ball with orca and then tries to get the ball using Junior code
 #[inline]
 pub async fn get_ball(
-  cp_data: &CpRobot, vision_data: &VisionMsg,
+  cfg: &Config, cp_data: &CpRobot, _vision_data: &VisionMsg,
   mut msg: TeensySendMsg, robot_self: CpTrackedRobot,
 ) -> TeensySendMsg {
   let dist = distance_cpv(robot_self.pos, cp_data.ball.pos);
   println!("Distance to ball: {:?}", dist);
 
   // Check distance to ball, either use orca for long distance or use direct control for taking the ball
-  if dist > 1500.0 {
-    //ToDo(ORCA)
+  if dist > 500.0 {
+    let plan = orca::drive_to_target(
+      cfg,
+      cp_data,
+      robot_self,
+      cp_data.ball.pos,
+      OrcaOptions {
+        max_speed_mm_s: 1_500.0,
+        stop_radius_mm: 180.0,
+        avoid_ball: false,
+        ..OrcaOptions::default()
+      },
+    );
+    msg = orca::orca_to_teensy(msg, &plan, robot_self);
   } else {
     // Calculate direction to ball as Vec2i
     let to_ball = calculate_vector(robot_self.pos, cp_data.ball.pos);

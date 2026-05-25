@@ -3,6 +3,7 @@ use crate::config;
 use crate::proto::{CpRobot, CpTrackedRobot};
 use crate::robot_logic::ball_logic::get_ball;
 use crate::robot_logic::helpers::distance_cpv;
+use crate::robot_logic::orca::OrcaOptions;
 use tracing::info;
 
 mod ball_logic;
@@ -23,7 +24,7 @@ pub async fn command(
     }
     1 => {
       // Speed check
-      let speed = if cp_data.cmd.speed > Some(1500) && stop {
+      let max_speed_mm_s = if cp_data.cmd.speed > Some(1500) && stop {
         1500
       } else {
         cp_data.cmd.speed.unwrap_or_default()
@@ -35,18 +36,26 @@ pub async fn command(
       );
 
       // Check if near of pos, and then stop
-      if distance_cpv(robot_self.pos, cp_data.cmd.pos.unwrap_or_default()) < 200.0 {
+      if distance_cpv(robot_self.pos, cp_data.cmd.pos.unwrap_or_default()) < 500.0 {
         info!(
           "Distance to point: {:?}",
-          distance_cpv(robot_self.pos, cp_data.cmd.pos.unwrap_or_default()) < 200.0
+          distance_cpv(robot_self.pos, cp_data.cmd.pos.unwrap_or_default())
         );
-        // ToDo(ORCA STOP)
+        msg.speed = 0;
       } else {
-        // Drive to pos
-        // ToDo(ORCA DRIVE)
+        let plan = orca::drive_to_target(
+          cfg,
+          cp_data,
+          robot_self,
+          cp_data.cmd.pos.unwrap_or_default(),
+          OrcaOptions {
+            max_speed_mm_s: max_speed_mm_s as f32,
+            avoid_ball: stop,
+            ..OrcaOptions::default()
+          },
+        );
+        msg = orca::orca_to_teensy(msg, &plan, robot_self);
       }
-
-      // ToDo(ORCA COMMAND)
     }
     2 => {
       // Kick in kick dir
@@ -78,6 +87,7 @@ pub async fn command(
     5 => {
       // Steal Ball
       msg = get_ball(
+        cfg,
         cp_data,
         vision_data,
         msg,

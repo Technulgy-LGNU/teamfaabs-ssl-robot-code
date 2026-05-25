@@ -120,7 +120,7 @@ async fn main() {
       }
       1 => {
         // Robot is not allowed to move
-        // ToDo(ORCA STOP)
+        robot_msg.speed = 0;
       }
       2 => {
         // Robot is allowed to move with a max speed of
@@ -138,7 +138,7 @@ async fn main() {
       5 => {
         // Substitute
         // HALT
-        // ToDo(ORCA STOP)
+        robot_msg.speed = 0;
       }
       _ => {}
     }
@@ -148,7 +148,6 @@ async fn main() {
 
     // After logic, send new robot command
     robot_msg.state = cp_data.cmd.state as u8;
-    robot_msg.orient = cp_data.cmd.orientation() as u16;
     let mut orient = robot_self.orientation % 360;
     if orient.is_negative() {
       orient += 360;
@@ -157,9 +156,6 @@ async fn main() {
     robot_msg.vel_x = robot_self.vel.unwrap_or_default().x as i16;
     robot_msg.vel_y = robot_self.vel.unwrap_or_default().y as i16;
 
-    robot_msg.speed = 300;
-    robot_msg.dir = 0;
-    robot_msg.orient = 0;
 
     // Print data for testing
     info!("Direction from Orca: {:?}", robot_msg.dir);

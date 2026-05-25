@@ -15,8 +15,21 @@ pub fn calculate_vector(a: CpVector2, b: CpVector2) -> Vec2i {
   }
 }
 
-#[derive(Debug, Clone, Copy), inline]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct Vec2i {
   pub(crate) x: i32,
   pub(crate) y: i32,
 }
+
+#[inline]
+pub fn vec2i_length(v: Vec2i) -> f32 {
+  let x = v.x as f32;
+  let y = v.y as f32;
+  (x * x + y * y).sqrt()
+}
+
+#[inline]
+pub fn vec2i_to_f32(v: Vec2i) -> (f32, f32) {
+  (v.x as f32, v.y as f32)
+}
+

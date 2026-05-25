@@ -83,6 +83,38 @@ impl Default for FieldConfig {
   }
 }
 
+impl FieldConfig {
+  #[inline]
+  pub fn width_mm(&self) -> f32 {
+    self.width as f32
+  }
+
+  #[inline]
+  pub fn height_mm(&self) -> f32 {
+    self.height as f32
+  }
+
+  #[inline]
+  pub fn runoff_width_mm(&self) -> f32 {
+    self.runoff_width as f32
+  }
+
+  #[inline]
+  pub fn penalty_area_width_mm(&self) -> f32 {
+    self.penalty_area_width as f32
+  }
+
+  #[inline]
+  pub fn penalty_area_height_mm(&self) -> f32 {
+    self.penalty_area_height as f32
+  }
+
+  #[inline]
+  pub fn goal_width_mm(&self) -> f32 {
+    self.goal_width as f32
+  }
+}
+
 pub fn load_or_create_config(path: &str, ) -> Result<Config, Box<dyn Error>> {
   if !Path::new(path).exists() {
     let default_config = Config::default();
