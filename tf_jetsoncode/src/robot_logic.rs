@@ -8,7 +8,7 @@ use tracing::info;
 
 mod ball_logic;
 pub mod goalie;
-mod helpers;
+pub mod helpers;
 pub mod orca;
 
 #[inline]
@@ -30,17 +30,13 @@ pub async fn command(
         cp_data.cmd.speed.unwrap_or_default()
       };
 
-      println!(
-        "Distance from robot -> Ball: {:?}",
-        distance_cpv(robot_self.pos, cp_data.cmd.pos.unwrap_or_default())
-      );
+      //info!(
+      //  "Distance from robot -> Ball: {:?}",
+      //  distance_cpv(robot_self.pos, cp_data.cmd.pos.unwrap_or_default())
+      //);
 
       // Check if near of pos, and then stop
       if distance_cpv(robot_self.pos, cp_data.cmd.pos.unwrap_or_default()) < 500.0 {
-        info!(
-          "Distance to point: {:?}",
-          distance_cpv(robot_self.pos, cp_data.cmd.pos.unwrap_or_default())
-        );
         msg.speed = 0;
       } else {
         let plan = orca::drive_to_target(

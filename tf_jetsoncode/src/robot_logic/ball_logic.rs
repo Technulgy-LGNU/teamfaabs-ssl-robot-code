@@ -1,7 +1,7 @@
 use crate::communication::{TeensySendMsg, VisionMsg};
 use crate::config::Config;
 use crate::proto::{CpRobot, CpTrackedRobot, Vector2f};
-use crate::robot_logic::helpers::{calculate_vector, distance_cpv};
+use crate::robot_logic::helpers::{calculate_vector_2i, distance_cpv};
 use crate::robot_logic::orca::{self, OrcaOptions};
 use std::f32::consts::PI;
 
@@ -31,7 +31,7 @@ pub async fn get_ball(
     msg = orca::orca_to_teensy(msg, &plan, robot_self);
   } else {
     // Calculate direction to ball as Vec2i
-    let to_ball = calculate_vector(robot_self.pos, cp_data.ball.pos);
+    let to_ball = calculate_vector_2i(robot_self.pos, cp_data.ball.pos);
 
     // Transformation vector with respected input angle
     let trans_vector = Vector2f {
