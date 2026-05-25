@@ -6,14 +6,13 @@ TARGET="aarch64-unknown-linux-gnu"
 BINARY="tf_jetsoncode"
 
 REMOTE_DIR="/home/robotik/tf_jetsoncode"
-REMOTE_BIN="$REMOTE_DIR/$BINARY"
+REMOTE_BIN="$REMOTE_DIR"
 
 ROBOTS=(
     "10.0.64.101"
 )
 
 MODE="debug"
-ATTACH=0
 SINGLE_ROBOT=""
 
 usage() {
@@ -49,11 +48,12 @@ deploy_robot() {
 
     ssh robotik@"$ROBOT_IP" "mkdir -p $REMOTE_DIR"
 
+
     scp "$LOCAL_BIN" \
         robotik@"$ROBOT_IP":$REMOTE_BIN
 
     ssh robotik@"$ROBOT_IP" \
-        "chmod +x $REMOTE_BIN && sudo systemctl restart tf_jetsoncode"
+        "chmod +x /home/robotik/tf_jetsoncode/tf_jetsoncode && sudo systemctl restart tf_jetsoncode"
 
     echo "==> Done: $ROBOT_IP"
 }

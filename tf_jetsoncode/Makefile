@@ -11,7 +11,8 @@ upload-release: cross-build-release
 
 
 run-debug: upload-debug
-	ssh robotik@10.0.64.101 "cd /home/robotik/Documents/teamfaabs-ssl-robot-code/tf_jetsoncode && ./tf_jetsoncode"
+	ssh robotik@10.0.64.101 "cd /home/robotik/tf_jetsoncode/tf_jetsoncode && ./tf_jetsoncode"
 
 run-release: upload-release
-	ssh robotik@10.0.64.101 "cd /home/robotik/Documents/teamfaabs-ssl-robot-code/tf_jetsoncode && ./tf_jetsoncode"
+	#ssh robotik@10.0.64.101 "cd /home/robotik/tf_jetsoncode/tf_jetsoncode && ./tf_jetsoncode"
+	ssh robotik@10.0.64.101 "sudo systemctl restart tf_jetsoncode.service"
