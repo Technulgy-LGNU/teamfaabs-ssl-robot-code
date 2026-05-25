@@ -1,10 +1,11 @@
 use crate::communication::{communication_receiver, send_flags};
 use crate::communication::send_cp::send_cp;
 use crate::proto::RobotCp;
-use crate::robot_logic::command;
+use crate::robot_logic::{command, orca};
 use crate::robot_logic::goalie::goalie;
 use std::time::Duration;
 use tracing::info;
+use crate::robot_logic::orca::{OrcaOptions, OrcaPlan};
 
 mod communication;
 mod config;
@@ -108,9 +109,9 @@ async fn main() {
       }
     }
 
-    info!("\x1b[32m=================\x1b[0m");
-    info!("Incoming CP_Data: {:?}", cp_data);
-    info!("\x1b[32m=================\x1b[0m");
+    //info!("\x1b[32m=================\x1b[0m");
+    //info!("Incoming CP_Data: {:?}", cp_data);
+    //info!("\x1b[32m=================\x1b[0m");
 
     // Game Logic
     match cp_data.cmd.state {
@@ -126,14 +127,26 @@ async fn main() {
         // Robot is allowed to move with a max speed of
         // 1,5m/s (1500mm/s) & stay away from ball 500mm
         robot_msg = command(&config, &cp_data, &vision_data, robot_msg, true, robot_self).await;
+
+        let mut orient = robot_self.orientation % 360;
+        while orient.is_negative() {
+          orient += 360;
+        }
+        robot_msg.self_orient = orient as u16;
       }
       3 => {
         // Free to listen to commands
         robot_msg = command(&config, &cp_data, &vision_data, robot_msg, false, robot_self).await;
+
+        let mut orient = robot_self.orientation % 360;
+        while orient.is_negative() {
+          orient += 360;
+        }
+        robot_msg.self_orient = orient as u16;
       }
       4 => {
         // Goalie, move into penalty area and protect the goal
-        robot_msg = goalie(&cp_data, &vision_data, robot_msg);
+        robot_msg = goalie(&config, &cp_data, &robot_self, &vision_data, robot_msg);
       }
       5 => {
         // Substitute
@@ -148,14 +161,11 @@ async fn main() {
 
     // After logic, send new robot command
     robot_msg.state = cp_data.cmd.state as u8;
-    let mut orient = robot_self.orientation % 360;
-    if orient.is_negative() {
-      orient += 360;
-    }
-    robot_msg.self_orient = orient as u16;
     robot_msg.vel_x = robot_self.vel.unwrap_or_default().x as i16;
     robot_msg.vel_y = robot_self.vel.unwrap_or_default().y as i16;
 
+    robot_msg.dir -= 90;
+    robot_msg.dir %= 360;
 
     // Print data for testing
     info!("Direction from Orca: {:?}", robot_msg.dir);
@@ -163,10 +173,8 @@ async fn main() {
     info!("Self Dir: {:?}", robot_msg.self_orient);
 
     // Print Self velocity in mm/s
-    info!("Self Velocity: {:?}", ((robot_self.vel.unwrap_or_default().x*robot_self.vel.unwrap_or_default().x+robot_self.vel.unwrap_or_default().y*robot_self.vel.unwrap_or_default().y) as f32).sqrt());
+    //info!("Self Velocity: {:?}", ((robot_self.vel.unwrap_or_default().x*robot_self.vel.unwrap_or_default().x+robot_self.vel.unwrap_or_default().y*robot_self.vel.unwrap_or_default().y) as f32).sqrt());
 
-    robot_msg.set_flag(send_flags::DRIBBLER);
-    robot_msg.dribbler_pwr = 100;
 
     let buf = robot_msg.encode();
     tx.publish(buf).await;

@@ -30,13 +30,8 @@ pub async fn command(
         cp_data.cmd.speed.unwrap_or_default()
       };
 
-      //info!(
-      //  "Distance from robot -> Ball: {:?}",
-      //  distance_cpv(robot_self.pos, cp_data.cmd.pos.unwrap_or_default())
-      //);
-
       // Check if near of pos, and then stop
-      if distance_cpv(robot_self.pos, cp_data.cmd.pos.unwrap_or_default()) < 500.0 {
+      if distance_cpv(robot_self.pos, cp_data.cmd.pos.unwrap_or_default()) < 200.0 {
         msg.speed = 0;
       } else {
         let plan = orca::drive_to_target(

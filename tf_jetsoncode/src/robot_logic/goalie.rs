@@ -1,7 +1,8 @@
 use crate::communication::{TeensySendMsg, VisionMsg};
-use crate::proto::CpRobot;
+use crate::config;
+use crate::proto::{CpRobot, CpTrackedRobot};
 
 #[inline]
-pub fn goalie(_cp_data: &CpRobot, _vision_data: &VisionMsg, msg: TeensySendMsg) -> TeensySendMsg {
+pub fn goalie(cfg: &config::Config, cp_data: &CpRobot, robot_self: &CpTrackedRobot, vision_data: &VisionMsg, msg: TeensySendMsg) -> TeensySendMsg {
   msg
 }
