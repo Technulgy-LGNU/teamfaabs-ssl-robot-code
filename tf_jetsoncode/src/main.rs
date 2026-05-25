@@ -169,6 +169,7 @@ async fn main() {
     // Print data for testing
     info!("Direction from Orca: {:?}", robot_msg.dir);
     info!("Speed from Orca: {:?}", robot_msg.speed);
+    info!("Orientation from CP: {:?}", robot_msg.orient);
     info!("Self Dir: {:?}", robot_msg.self_orient);
 
     // Print Self velocity in mm/s
