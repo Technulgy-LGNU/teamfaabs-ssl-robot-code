@@ -108,9 +108,9 @@ async fn main() {
       }
     }
 
-    //info!("\x1b[32m=================\x1b[0m");
-    //info!("Incoming CP_Data: {:?}", cp_data);
-    //info!("\x1b[32m=================\x1b[0m");
+    info!("\x1b[32m=================\x1b[0m");
+    info!("Incoming CP_Data: {:?}", cp_data);
+    info!("\x1b[32m=================\x1b[0m");
 
     // Game Logic
     match cp_data.cmd.state {
@@ -132,6 +132,7 @@ async fn main() {
           orient += 360;
         }
         robot_msg.self_orient = orient as u16;
+        robot_msg.orient = cp_data.cmd.orientation.unwrap_or_default() as u16;
       }
       3 => {
         // Free to listen to commands
@@ -142,6 +143,7 @@ async fn main() {
           orient += 360;
         }
         robot_msg.self_orient = orient as u16;
+        robot_msg.orient = cp_data.cmd.orientation.unwrap_or_default() as u16;
       }
       4 => {
         // Goalie, move into penalty area and protect the goal
