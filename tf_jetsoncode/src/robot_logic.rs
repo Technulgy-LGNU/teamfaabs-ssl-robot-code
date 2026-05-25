@@ -10,6 +10,7 @@ pub mod goalie;
 mod helpers;
 pub mod orca;
 
+#[inline]
 pub async fn command(
   cfg: &config::Config, cp_data: &CpRobot, vision_data: &VisionMsg, mut msg: TeensySendMsg,
   stop: bool, robot_self: CpTrackedRobot,

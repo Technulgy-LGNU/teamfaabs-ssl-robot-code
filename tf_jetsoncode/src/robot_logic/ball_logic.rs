@@ -4,6 +4,7 @@ use crate::robot_logic::helpers::{calculate_vector, distance_cpv};
 use std::f32::consts::PI;
 
 /// Function drives near the ball with orca and then tries to get the ball using Junior code
+#[inline]
 pub async fn get_ball(
   cp_data: &CpRobot, vision_data: &VisionMsg,
   mut msg: TeensySendMsg, robot_self: CpTrackedRobot,
@@ -62,6 +63,7 @@ pub async fn get_ball(
 }
 
 /// Arduino constraint()
+#[inline]
 fn constrain(value: f32, min: f32, max: f32) -> f32 {
   value.clamp(min, max)
 }
