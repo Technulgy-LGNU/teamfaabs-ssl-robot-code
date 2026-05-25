@@ -42,7 +42,7 @@ async fn main() {
 
   // Udp Socket to send data back to the CrashPilot
   let upd_socket =
-    match tokio::net::UdpSocket::bind(format!("0.0.0.0:{}", config.cp_config.port_outgoing + 2))
+    match tokio::net::UdpSocket::bind(format!("0.0.0.0:{}", config.cp_config.port_outgoing+2))
       .await
     {
       Ok(s) => s,
@@ -181,10 +181,17 @@ async fn main() {
     robot_msg.vel_x = robot_self.vel.unwrap_or_default().x as i16;
     robot_msg.vel_y = robot_self.vel.unwrap_or_default().y as i16;
 
+    robot_msg.speed = 300;
+    robot_msg.dir = 0;
+    robot_msg.orient = 0;
+
     // Print data for testing
     info!("Direction from Orca: {:?}", robot_msg.dir);
     info!("Speed from Orca: {:?}", robot_msg.speed);
     info!("Self Dir: {:?}", robot_msg.self_orient);
+
+    // Print Self velocity in mm/s
+    info!("Self Velocity: {:?}", ((robot_self.vel.unwrap_or_default().x*robot_self.vel.unwrap_or_default().x+robot_self.vel.unwrap_or_default().y*robot_self.vel.unwrap_or_default().y) as f32).sqrt());
 
     robot_msg.set_flag(send_flags::DRIBBLER);
     robot_msg.dribbler_pwr = 100;

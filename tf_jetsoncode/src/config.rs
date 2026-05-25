@@ -38,7 +38,7 @@ impl Default for CrashPilotConfig {
   fn default() -> Self {
     Self {
       host: Ipv4Addr::new(10, 0, 64, 221),
-      port: 8192,
+      port: 1024,
       port_outgoing: 4096,
     }
   }

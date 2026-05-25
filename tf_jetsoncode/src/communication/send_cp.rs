@@ -16,7 +16,7 @@ pub async fn send_cp(cfg: &config::Config, socket: &UdpSocket, msg: RobotCp) {
     return;
   }
 
-  let addr = SocketAddr::V4(SocketAddrV4::new(cfg.cp_config.host, cfg.cp_config.port));
+  let addr = SocketAddr::V4(SocketAddrV4::new(cfg.cp_config.host, cfg.cp_config.port_outgoing));
   match socket.send_to(&buf, addr).await {
     Ok(_) => (),
     Err(e) => {

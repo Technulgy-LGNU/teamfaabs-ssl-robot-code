@@ -4,10 +4,10 @@ use crate::config;
 use crate::proto::CpRobot;
 
 pub async fn receive_cp(cfg: &config::Config, tx: EventShare) {
-  let cp_socket: tokio::net::UdpSocket = match tokio::net::UdpSocket::bind(format!("{}:{}", cfg.cp_config.host, cfg.cp_config.port)).await {
+  let cp_socket: tokio::net::UdpSocket = match tokio::net::UdpSocket::bind(format!("0.0.0.0:{}", cfg.cp_config.port)).await {
     Ok(s) => s,
     Err(e) => {
-      eprintln!("Failed to bind UDP socket for CP: {}", e);
+      eprintln!("Failed to bind UDP socket for CP with port {}: {}", cfg.cp_config.port, e);
       return;
     }
   };
