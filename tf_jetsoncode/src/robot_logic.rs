@@ -1,10 +1,9 @@
-use tracing::info;
 use crate::communication::{TeensySendMsg, VisionMsg, send_flags};
 use crate::config;
 use crate::proto::{CpRobot, CpTrackedRobot};
 use crate::robot_logic::ball_logic::get_ball;
 use crate::robot_logic::helpers::distance_cpv;
-use crate::robot_logic::orca::{nav_command_to_teensy, NavIntent, OrcaHandle, OrcaRequest, Vec2i, WorldSnapshot};
+use tracing::info;
 
 mod ball_logic;
 pub mod goalie;
@@ -12,8 +11,8 @@ mod helpers;
 pub mod orca;
 
 pub async fn command(
-  cfg: &config::Config, cp_data: &CpRobot, orca: &mut OrcaHandle, world: &WorldSnapshot,
-  vision_data: &VisionMsg, mut msg: TeensySendMsg, stop: bool, robot_self: CpTrackedRobot,
+  cfg: &config::Config, cp_data: &CpRobot, vision_data: &VisionMsg, mut msg: TeensySendMsg,
+  stop: bool, robot_self: CpTrackedRobot,
 ) -> TeensySendMsg {
   match cp_data.cmd.task {
     0 => {
@@ -29,35 +28,24 @@ pub async fn command(
         cp_data.cmd.speed.unwrap_or_default()
       };
 
-      println!("Distance from robot -> Ball: {:?}", distance_cpv(robot_self.pos, cp_data.cmd.pos.unwrap_or_default()));
+      println!(
+        "Distance from robot -> Ball: {:?}",
+        distance_cpv(robot_self.pos, cp_data.cmd.pos.unwrap_or_default())
+      );
 
       // Check if near of pos, and then stop
       if distance_cpv(robot_self.pos, cp_data.cmd.pos.unwrap_or_default()) < 200.0 {
-        info!("Distance to point: {:?}", distance_cpv(robot_self.pos, cp_data.cmd.pos.unwrap_or_default()) < 200.0);
-        orca.publish(OrcaRequest {
-          world: world.clone(),
-          intent: NavIntent::Stop,
-        })
+        info!(
+          "Distance to point: {:?}",
+          distance_cpv(robot_self.pos, cp_data.cmd.pos.unwrap_or_default()) < 200.0
+        );
+        // ToDo(ORCA STOP)
       } else {
         // Drive to pos
-        let intent = NavIntent::GoToPosition {
-          target_pos_mm: Vec2i {
-            x: cp_data.cmd.pos.unwrap_or_default().x,
-            y: cp_data.cmd.pos.unwrap_or_default().y,
-          },
-          max_speed_mm_s: speed,
-        };
-
-        orca.publish(OrcaRequest {
-          world: world.clone(),
-          intent,
-        });
+        // ToDo(ORCA DRIVE)
       }
 
-      let orca_cmd = orca.changed().await.unwrap_or_default();
-
-      info!("Orca output: {:?}", orca_cmd);
-      msg = nav_command_to_teensy(msg, orca_cmd);
+      // ToDo(ORCA COMMAND)
     }
     2 => {
       // Kick in kick dir
@@ -90,8 +78,6 @@ pub async fn command(
       // Steal Ball
       msg = get_ball(
         cp_data,
-        &mut orca.clone(),
-        world,
         vision_data,
         msg,
         robot_self,

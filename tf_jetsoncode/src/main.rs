@@ -3,9 +3,6 @@ use crate::communication::send_cp::send_cp;
 use crate::proto::RobotCp;
 use crate::robot_logic::command;
 use crate::robot_logic::goalie::goalie;
-use crate::robot_logic::orca::{
-  NavIntent, OrcaHandle, OrcaParams, OrcaRequest, WorldSnapshot,
-};
 use std::time::Duration;
 use tracing::info;
 
@@ -50,17 +47,6 @@ async fn main() {
         panic!("Failed to create udp socket for sending cp data: {}", e);
       }
     };
-
-  // Orca Params & Handlers
-  let params = OrcaParams {
-    time_horizon_ms: 4000,
-    safety_margin_mm: 10,
-    default_robot_radius_mm: 90,
-    time_step_ms: 4,
-    responsibility: 0.2,
-    run_blocking: false,
-  };
-  let mut orca = OrcaHandle::spawn(params);
 
   // Starting robot
   info!("Starting robot ...");
@@ -122,13 +108,6 @@ async fn main() {
       }
     }
 
-    // Orca
-    let world = WorldSnapshot::from_cp(
-      &cp_data,
-      config.robot_id as u32,
-      params.default_robot_radius_mm,
-    );
-
     info!("\x1b[32m=================\x1b[0m");
     info!("Incoming CP_Data: {:?}", cp_data);
     info!("\x1b[32m=================\x1b[0m");
@@ -141,28 +120,25 @@ async fn main() {
       }
       1 => {
         // Robot is not allowed to move
-
-        let intent = NavIntent::Stop;
-        orca.publish(OrcaRequest { world, intent });
+        // ToDo(ORCA STOP)
       }
       2 => {
         // Robot is allowed to move with a max speed of
         // 1,5m/s (1500mm/s) & stay away from ball 500mm
-        robot_msg = command(&config, &cp_data, &mut orca, &world, &vision_data, robot_msg, true, robot_self).await;
+        robot_msg = command(&config, &cp_data, &vision_data, robot_msg, true, robot_self).await;
       }
       3 => {
         // Free to listen to commands
-        robot_msg = command(&config, &cp_data, &mut orca, &world, &vision_data, robot_msg, false, robot_self).await;
+        robot_msg = command(&config, &cp_data, &vision_data, robot_msg, false, robot_self).await;
       }
       4 => {
         // Goalie, move into penalty area and protect the goal
-        robot_msg = goalie(&cp_data, &orca, &world, &vision_data, robot_msg);
+        robot_msg = goalie(&cp_data, &vision_data, robot_msg);
       }
       5 => {
         // Substitute
         // HALT
-        let intent = NavIntent::Stop;
-        orca.publish(OrcaRequest { world, intent });
+        // ToDo(ORCA STOP)
       }
       _ => {}
     }

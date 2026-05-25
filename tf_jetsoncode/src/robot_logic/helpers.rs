@@ -1,5 +1,4 @@
 use crate::proto::CpVector2;
-use crate::robot_logic::orca::Vec2i;
 
 pub fn distance_cpv(a: CpVector2, b: CpVector2) -> f32 {
   let dx = (a.x - b.x) as f32;
@@ -12,4 +11,10 @@ pub fn calculate_vector(a: CpVector2, b: CpVector2) -> Vec2i {
     x: a.x - b.x,
     y: a.y - b.y,
   }
+}
+
+#[derive(Debug, Clone, Copy), inline]
+pub struct Vec2i {
+  pub(crate) x: i32,
+  pub(crate) y: i32,
 }
