@@ -2,6 +2,7 @@ use crate::communication::{EventShare, TeensyOut, TeensyRecMSG};
 use crate::{config, TEENSY_RECEIVE_MSG_SIZE, TEENSY_SEND_MSG_SIZE};
 use std::time::Duration;
 use tokio::time::sleep;
+use tracing::error;
 
 /// Robust Teensy communication task that will try to reconnect when the device
 /// disappears (for example during firmware upload). Uses exponential backoff
@@ -34,7 +35,7 @@ pub async fn teensy_communication(cfg: &config::Config, tx: EventShare, rx: Teen
           dev
         }
         Err(err_msg) => {
-          eprintln!("{}", err_msg);
+          error!("{}", err_msg);
           // Wait with backoff before retrying
           sleep(Duration::from_millis(backoff_ms)).await;
           backoff_ms = (backoff_ms * 2).min(MAX_BACKOFF_MS);
@@ -44,7 +45,7 @@ pub async fn teensy_communication(cfg: &config::Config, tx: EventShare, rx: Teen
 
       // Try to set non-blocking mode; if it fails, close and retry.
       if let Err(e) = teensy.set_blocking_mode(false) {
-        eprintln!("Failed to set Teensy HID device to nonblocking mode: {}", e);
+        error!("Failed to set Teensy HID device to nonblocking mode: {}", e);
         // Drop device and retry after backoff
         sleep(Duration::from_millis(backoff_ms)).await;
         backoff_ms = (backoff_ms * 2).min(MAX_BACKOFF_MS);
@@ -86,7 +87,7 @@ pub async fn teensy_communication(cfg: &config::Config, tx: EventShare, rx: Teen
               }
 
               // Any other read error likely indicates disconnection - log and break to reconnect.
-              eprintln!("Failed to read from Teensy HID device: {}", e);
+              error!("Failed to read from Teensy HID device: {}", e);
               break 'device_loop;
             }
           }
@@ -113,7 +114,7 @@ pub async fn teensy_communication(cfg: &config::Config, tx: EventShare, rx: Teen
       } // end 'device_loop
 
       // If we've reached here, the device was dropped or had a fatal error.
-      eprintln!("Teensy HID device disconnected, will attempt to reconnect in {} ms", backoff_ms);
+      error!("Teensy HID device disconnected, will attempt to reconnect in {} ms", backoff_ms);
 
       // Drop the device handle explicitly (it will happen when goes out of scope).
       // Wait backoff and then retry.
