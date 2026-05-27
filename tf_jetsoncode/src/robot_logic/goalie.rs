@@ -5,8 +5,8 @@ use crate::robot_logic::helpers::distance_cpv;
 
 const GOAL_LINE_MARGIN_MM: f32 = 120.0;
 const GOALIE_POST_MARGIN_MM: f32 = 70.0;
-const GOALIE_MIN_SPEED_MM_S: f32 = 1_500.0;
-const GOALIE_MAX_SPEED_MM_S: f32 = 4_300.0;
+const GOALIE_MIN_SPEED_MM_S: f32 = 300.0;
+const GOALIE_MAX_SPEED_MM_S: f32 = 1_200.0;
 
 #[inline]
 pub fn goalie(
