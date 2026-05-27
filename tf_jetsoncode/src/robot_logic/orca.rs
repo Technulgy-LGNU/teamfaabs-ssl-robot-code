@@ -132,7 +132,7 @@ pub fn drive_to_target(
 	target,
 	target_distance_mm: distance_mm,
 	speed_mm_s,
-	direction_deg: velocity_to_direction_deg(velocity, robot_self.orientation),
+    direction_deg: velocity_to_direction_deg(velocity),
 	current_speed_mm_s,
 	accel_hint_mm_s2: options.accel_mm_s2,
 	decel_hint_mm_s2: options.decel_mm_s2,
@@ -140,9 +140,9 @@ pub fn drive_to_target(
 }
 
 #[inline]
-pub fn orca_to_teensy(mut msg: TeensySendMsg, plan: &OrcaPlan, robot_self: CpTrackedRobot) -> TeensySendMsg {
+pub fn orca_to_teensy(mut msg: TeensySendMsg, plan: &OrcaPlan, _robot_self: CpTrackedRobot) -> TeensySendMsg {
   let speed = plan.velocity.x.hypot(plan.velocity.y).round().clamp(0.0, u16::MAX as f32) as u16;
-  let dir = velocity_to_teensy_dir(plan.velocity, robot_self.orientation);
+  let dir = velocity_to_teensy_dir(plan.velocity);
 
   msg.speed = speed;
   msg.dir = dir;
@@ -523,18 +523,18 @@ fn normalize_deg(mut deg: f32) -> f32 {
 }
 
 #[inline]
-fn velocity_to_direction_deg(velocity: Vector2, robot_orientation_deg: i32) -> f32 {
+fn velocity_to_direction_deg(velocity: Vector2) -> f32 {
   let speed = norm(velocity);
   if speed <= 1.0 {
 	return 0.0;
   }
 
-  normalize_deg(velocity.y.atan2(velocity.x).to_degrees() - robot_orientation_deg as f32)
+  normalize_deg(velocity.y.atan2(velocity.x).to_degrees())
 }
 
 #[inline]
-fn velocity_to_teensy_dir(velocity: Vector2, robot_orientation_deg: i32) -> u16 {
-  velocity_to_direction_deg(velocity, robot_orientation_deg).round().clamp(0.0, 359.0) as u16
+fn velocity_to_teensy_dir(velocity: Vector2) -> u16 {
+  velocity_to_direction_deg(velocity).round().clamp(0.0, 359.0) as u16
 }
 
 #[cfg(test)]
@@ -589,10 +589,17 @@ mod tests {
 
   #[test]
   fn direction_uses_x_as_zero_degrees() {
-  assert_eq!(velocity_to_teensy_dir(vec2(1_000.0, 0.0), 0), 0);
-  assert_eq!(velocity_to_teensy_dir(vec2(0.0, 1_000.0), 0), 90);
-  assert_eq!(velocity_to_teensy_dir(vec2(-1_000.0, 0.0), 0), 180);
-  assert_eq!(velocity_to_teensy_dir(vec2(0.0, -1_000.0), 0), 270);
+  assert_eq!(velocity_to_teensy_dir(vec2(1_000.0, 0.0)), 0);
+  assert_eq!(velocity_to_teensy_dir(vec2(0.0, 1_000.0)), 90);
+  assert_eq!(velocity_to_teensy_dir(vec2(-1_000.0, 0.0)), 180);
+  assert_eq!(velocity_to_teensy_dir(vec2(0.0, -1_000.0)), 270);
+  }
+
+  #[test]
+  fn direction_is_field_global_not_robot_relative() {
+	let _robot_self = sample_robot(0, 0, 90, Some((0, 0)));
+	assert_eq!(velocity_to_teensy_dir(vec2(1_000.0, 0.0)), 0);
+	assert_eq!(velocity_to_teensy_dir(vec2(0.0, 1_000.0)), 90);
   }
 
   #[test]
@@ -634,12 +641,4 @@ mod tests {
     assert!(plan.velocity.x < 0.0);
   }
 }
-
-
-
-
-
-
-
-
 
