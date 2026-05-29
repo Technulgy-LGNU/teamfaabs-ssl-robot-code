@@ -14,6 +14,8 @@ mod robot_logic;
 // Constants
 const TEENSY_SEND_MSG_SIZE: usize = 17;
 const TEENSY_RECEIVE_MSG_SIZE: usize = 6;
+const DEFAULT_ACCEL_MM_S2: f32 = 2_800.0;
+const DEFAULT_DECEL_MM_S2: f32 = 3_800.0;
 
 #[tokio::main]
 async fn main() {
@@ -143,7 +145,17 @@ async fn main() {
           orient += 360;
         }
         robot_msg.self_orient = orient as u16;
-        robot_msg.orient = cp_data.cmd.orientation.unwrap_or_default() as u16;
+
+        // Check if self_orient != cp_data.cmd.orientation, if so, gradually rotate the robot, dependent on the distance
+        // to the end position, if command == pos, if not, just rotate
+        if cp_data.cmd.task == 1 {
+          // Check if orientation matches
+          if orient == cp_data.cmd.orientation.unwrap_or_default() as i32 {
+
+          }
+        } else {
+          robot_msg.orient = cp_data.cmd.orientation.unwrap_or_default() as u16;
+        }
       }
       4 => {
         // Goalie, move into penalty area and protect the goal
@@ -167,9 +179,9 @@ async fn main() {
 
 
     // Print data for testing
-    info!("Direction from Orca: {:?}", robot_msg.dir);
-    info!("Speed from Orca: {:?}", robot_msg.speed);
-    info!("Orientation from CP: {:?}", robot_msg.orient);
+    info!("Direction: {:?}", robot_msg.dir);
+    info!("Speed: {:?}", robot_msg.speed);
+    info!("Orientation: {:?}", robot_msg.orient);
     info!("Self Dir: {:?}", robot_msg.self_orient);
 
     // Print Self velocity in mm/s

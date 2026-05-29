@@ -1,12 +1,11 @@
 use crate::communication::TeensySendMsg;
 use crate::config::Config;
+use crate::{DEFAULT_ACCEL_MM_S2, DEFAULT_DECEL_MM_S2};
 use crate::proto::{CpRobot, CpTrackedRobot, CpVector2, Vector2};
 
 const DEFAULT_DT_S: f32 = 0.004;
 const DEFAULT_MAX_SPEED_MM_S: f32 = 6000.0;
 const DEFAULT_APPROACH_GAIN: f32 = 1.6;
-const DEFAULT_ACCEL_MM_S2: f32 = 2_800.0;
-const DEFAULT_DECEL_MM_S2: f32 = 3_800.0;
 const DEFAULT_ROBOT_RADIUS_MM: f32 = 90.0;
 const DEFAULT_ROBOT_INFLUENCE_MM: f32 = 520.0;
 const DEFAULT_BALL_AVOID_MM: f32 = 500.0;
