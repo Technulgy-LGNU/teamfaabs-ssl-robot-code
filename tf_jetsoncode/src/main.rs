@@ -150,7 +150,8 @@ async fn main() {
         // to the end position, if command == pos, if not, just rotate
         if cp_data.cmd.task == 1 {
           // Check if orientation matches
-          if orient == cp_data.cmd.orientation.unwrap_or_default() as i32 {
+          if orient != cp_data.cmd.orientation.unwrap_or_default() as i32 {
+            // Distance to point
 
           }
         } else {

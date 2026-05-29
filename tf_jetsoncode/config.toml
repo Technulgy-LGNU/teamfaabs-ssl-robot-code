@@ -1,5 +1,6 @@
 robot_id = 2
 robot_team = "yellow"
+# False: +X || True: -X
 robot_goal = false
 onboard_vision_socket_path = "/tmp/ov_socket"
 
