@@ -5,13 +5,13 @@
 pub struct RobotId {
     /// the robot number
     #[prost(uint32, optional, tag="1")]
-    pub id: ::core::option::Option<u32>,
+    pub id: Option<u32>,
     /// the team that the robot belongs to
     #[prost(enumeration="Team", optional, tag="2")]
-    pub team: ::core::option::Option<i32>,
+    pub team: Option<i32>,
 }
 /// Team is either blue or yellow
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, prost::Enumeration)]
 #[repr(i32)]
 pub enum Team {
     /// team not set
@@ -34,7 +34,7 @@ impl Team {
         }
     }
     /// Creates an enum from field names used in the ProtoBuf definition.
-    pub fn from_str_name(value: &str) -> ::core::option::Option<Self> {
+    pub fn from_str_name(value: &str) -> Option<Self> {
         match value {
             "UNKNOWN" => Some(Self::Unknown),
             "YELLOW" => Some(Self::Yellow),
@@ -44,7 +44,7 @@ impl Team {
     }
 }
 /// Division denotes the current division, which influences some rules
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, prost::Enumeration)]
 #[repr(i32)]
 pub enum Division {
     DivUnknown = 0,
@@ -64,7 +64,7 @@ impl Division {
         }
     }
     /// Creates an enum from field names used in the ProtoBuf definition.
-    pub fn from_str_name(value: &str) -> ::core::option::Option<Self> {
+    pub fn from_str_name(value: &str) -> Option<Self> {
         match value {
             "DIV_UNKNOWN" => Some(Self::DivUnknown),
             "DIV_A" => Some(Self::DivA),
@@ -101,22 +101,22 @@ pub struct Vector3 {
 pub struct GameEvent {
     /// A globally unique id of the game event.
     #[prost(string, optional, tag="50")]
-    pub id: ::core::option::Option<::prost::alloc::string::String>,
+    pub id: Option<String>,
     /// The type of the game event.
     #[prost(enumeration="game_event::Type", optional, tag="40")]
-    pub r#type: ::core::option::Option<i32>,
+    pub r#type: Option<i32>,
     /// The origins of this game event.
     /// Empty, if it originates from game controller.
     /// Contains autoRef name(s), if it originates from one or more autoRefs.
     /// Ignored if sent by autoRef to game controller.
     #[prost(string, repeated, tag="41")]
-    pub origin: ::prost::alloc::vec::Vec<::prost::alloc::string::String>,
+    pub origin: Vec<String>,
     /// Unix timestamp in microseconds when the event was created.
     #[prost(uint64, optional, tag="49")]
-    pub created_timestamp: ::core::option::Option<u64>,
+    pub created_timestamp: Option<u64>,
     /// the event that occurred
     #[prost(oneof="game_event::Event", tags="6, 7, 11, 19, 31, 43, 13, 17, 24, 26, 27, 51, 15, 18, 22, 21, 29, 28, 20, 39, 8, 44, 14, 5, 45, 2, 3, 32, 34, 37, 52, 38, 46, 48, 47, 35, 36, 1, 9, 10, 12, 16, 42, 23, 25, 30, 33")]
-    pub event: ::core::option::Option<game_event::Event>,
+    pub event: Option<game_event::Event>,
 }
 /// Nested message and enum types in `GameEvent`.
 pub mod game_event {
@@ -128,10 +128,10 @@ pub mod game_event {
         pub by_team: i32,
         /// the bot that last touched the ball
         #[prost(uint32, optional, tag="2")]
-        pub by_bot: ::core::option::Option<u32>,
+        pub by_bot: Option<u32>,
         /// the location where the ball left the field \[m\]
         #[prost(message, optional, tag="3")]
-        pub location: ::core::option::Option<super::Vector2>,
+        pub location: Option<super::Vector2>,
     }
     /// the ball left the field via goal line and a team committed an aimless kick
     #[derive(Clone, Copy, PartialEq, ::prost::Message)]
@@ -141,13 +141,13 @@ pub mod game_event {
         pub by_team: i32,
         /// the bot that last touched the ball
         #[prost(uint32, optional, tag="2")]
-        pub by_bot: ::core::option::Option<u32>,
+        pub by_bot: Option<u32>,
         /// the location where the ball left the field \[m\]
         #[prost(message, optional, tag="3")]
-        pub location: ::core::option::Option<super::Vector2>,
+        pub location: Option<super::Vector2>,
         /// the location where the ball was last touched \[m\]
         #[prost(message, optional, tag="4")]
-        pub kick_location: ::core::option::Option<super::Vector2>,
+        pub kick_location: Option<super::Vector2>,
     }
     /// a team shot a goal
     #[derive(Clone, PartialEq, ::prost::Message)]
@@ -157,28 +157,28 @@ pub mod game_event {
         pub by_team: i32,
         /// the team that shot the goal (different from by_team for own goals)
         #[prost(enumeration="super::Team", optional, tag="6")]
-        pub kicking_team: ::core::option::Option<i32>,
+        pub kicking_team: Option<i32>,
         /// the bot that shot the goal
         #[prost(uint32, optional, tag="2")]
-        pub kicking_bot: ::core::option::Option<u32>,
+        pub kicking_bot: Option<u32>,
         /// the location where the ball entered the goal \[m\]
         #[prost(message, optional, tag="3")]
-        pub location: ::core::option::Option<super::Vector2>,
+        pub location: Option<super::Vector2>,
         /// the location where the ball was kicked (for deciding if this was a valid goal) \[m\]
         #[prost(message, optional, tag="4")]
-        pub kick_location: ::core::option::Option<super::Vector2>,
+        pub kick_location: Option<super::Vector2>,
         /// the maximum height the ball reached during the goal kick (for deciding if this was a valid goal) \[m\]
         #[prost(float, optional, tag="5")]
-        pub max_ball_height: ::core::option::Option<f32>,
+        pub max_ball_height: Option<f32>,
         /// number of robots of scoring team when the ball entered the goal (for deciding if this was a valid goal)
         #[prost(uint32, optional, tag="7")]
-        pub num_robots_by_team: ::core::option::Option<u32>,
+        pub num_robots_by_team: Option<u32>,
         /// The UNIX timestamp \[μs\] when the scoring team last touched the ball
         #[prost(uint64, optional, tag="8")]
-        pub last_touch_by_team: ::core::option::Option<u64>,
+        pub last_touch_by_team: Option<u64>,
         /// An additional message with e.g. a reason for invalid goals
         #[prost(string, optional, tag="9")]
-        pub message: ::core::option::Option<::prost::alloc::string::String>,
+        pub message: Option<String>,
     }
     /// the ball entered the goal directly during an indirect free kick
     #[derive(Clone, Copy, PartialEq, ::prost::Message)]
@@ -188,13 +188,13 @@ pub mod game_event {
         pub by_team: i32,
         /// the bot that kicked the ball - at least the team must be set
         #[prost(uint32, optional, tag="2")]
-        pub by_bot: ::core::option::Option<u32>,
+        pub by_bot: Option<u32>,
         /// the location where the ball entered the goal \[m\]
         #[prost(message, optional, tag="3")]
-        pub location: ::core::option::Option<super::Vector2>,
+        pub location: Option<super::Vector2>,
         /// the location where the ball was kicked \[m\]
         #[prost(message, optional, tag="4")]
-        pub kick_location: ::core::option::Option<super::Vector2>,
+        pub kick_location: Option<super::Vector2>,
     }
     /// the ball entered the goal, but was initially chipped
     #[derive(Clone, Copy, PartialEq, ::prost::Message)]
@@ -204,16 +204,16 @@ pub mod game_event {
         pub by_team: i32,
         /// the bot that kicked the ball
         #[prost(uint32, optional, tag="2")]
-        pub by_bot: ::core::option::Option<u32>,
+        pub by_bot: Option<u32>,
         /// the location where the ball entered the goal \[m\]
         #[prost(message, optional, tag="3")]
-        pub location: ::core::option::Option<super::Vector2>,
+        pub location: Option<super::Vector2>,
         /// the location where the ball was kicked \[m\]
         #[prost(message, optional, tag="4")]
-        pub kick_location: ::core::option::Option<super::Vector2>,
+        pub kick_location: Option<super::Vector2>,
         /// the maximum height \[m\] of the ball, before it entered the goal and since the last kick \[m\]
         #[prost(float, optional, tag="5")]
-        pub max_ball_height: ::core::option::Option<f32>,
+        pub max_ball_height: Option<f32>,
     }
     /// a bot moved too fast while the game was stopped
     #[derive(Clone, Copy, PartialEq, ::prost::Message)]
@@ -223,13 +223,13 @@ pub mod game_event {
         pub by_team: i32,
         /// the bot that was too fast
         #[prost(uint32, optional, tag="2")]
-        pub by_bot: ::core::option::Option<u32>,
+        pub by_bot: Option<u32>,
         /// the location of the bot \[m\]
         #[prost(message, optional, tag="3")]
-        pub location: ::core::option::Option<super::Vector2>,
+        pub location: Option<super::Vector2>,
         /// the bot speed \[m/s\]
         #[prost(float, optional, tag="4")]
-        pub speed: ::core::option::Option<f32>,
+        pub speed: Option<f32>,
     }
     /// a bot of the defending team got too close to the kick point during a free kick
     #[derive(Clone, Copy, PartialEq, ::prost::Message)]
@@ -239,37 +239,37 @@ pub mod game_event {
         pub by_team: i32,
         /// the bot that violates the distance to the kick point
         #[prost(uint32, optional, tag="2")]
-        pub by_bot: ::core::option::Option<u32>,
+        pub by_bot: Option<u32>,
         /// the location of the bot \[m\]
         #[prost(message, optional, tag="3")]
-        pub location: ::core::option::Option<super::Vector2>,
+        pub location: Option<super::Vector2>,
         /// the distance \[m\] from bot to the kick point (including the minimum radius)
         #[prost(float, optional, tag="4")]
-        pub distance: ::core::option::Option<f32>,
+        pub distance: Option<f32>,
     }
     /// two robots crashed into each other with similar speeds
     #[derive(Clone, Copy, PartialEq, ::prost::Message)]
     pub struct BotCrashDrawn {
         /// the bot of the yellow team
         #[prost(uint32, optional, tag="1")]
-        pub bot_yellow: ::core::option::Option<u32>,
+        pub bot_yellow: Option<u32>,
         /// the bot of the blue team
         #[prost(uint32, optional, tag="2")]
-        pub bot_blue: ::core::option::Option<u32>,
+        pub bot_blue: Option<u32>,
         /// the location of the crash (center between both bots) \[m\]
         #[prost(message, optional, tag="3")]
-        pub location: ::core::option::Option<super::Vector2>,
+        pub location: Option<super::Vector2>,
         /// the calculated crash speed \[m/s\] of the two bots
         #[prost(float, optional, tag="4")]
-        pub crash_speed: ::core::option::Option<f32>,
+        pub crash_speed: Option<f32>,
         /// the difference \[m/s\] of the velocity of the two bots
         #[prost(float, optional, tag="5")]
-        pub speed_diff: ::core::option::Option<f32>,
+        pub speed_diff: Option<f32>,
         /// the angle \[rad\] in the range \[0, π\] of the bot velocity vectors
         /// an angle of 0 rad (  0°) means, the bots barely touched each other
         /// an angle of π rad (180°) means, the bots crashed frontal into each other
         #[prost(float, optional, tag="6")]
-        pub crash_angle: ::core::option::Option<f32>,
+        pub crash_angle: Option<f32>,
     }
     /// two robots crashed into each other and one team was found guilty to due significant speed difference
     #[derive(Clone, Copy, PartialEq, ::prost::Message)]
@@ -279,24 +279,24 @@ pub mod game_event {
         pub by_team: i32,
         /// the bot that caused the crash
         #[prost(uint32, optional, tag="2")]
-        pub violator: ::core::option::Option<u32>,
+        pub violator: Option<u32>,
         /// the bot of the opposite team that was involved in the crash
         #[prost(uint32, optional, tag="3")]
-        pub victim: ::core::option::Option<u32>,
+        pub victim: Option<u32>,
         /// the location of the crash (center between both bots) \[m\]
         #[prost(message, optional, tag="4")]
-        pub location: ::core::option::Option<super::Vector2>,
+        pub location: Option<super::Vector2>,
         /// the calculated crash speed vector \[m/s\] of the two bots
         #[prost(float, optional, tag="5")]
-        pub crash_speed: ::core::option::Option<f32>,
+        pub crash_speed: Option<f32>,
         /// the difference \[m/s\] of the velocity of the two bots
         #[prost(float, optional, tag="6")]
-        pub speed_diff: ::core::option::Option<f32>,
+        pub speed_diff: Option<f32>,
         /// the angle \[rad\] in the range \[0, π\] of the bot velocity vectors
         /// an angle of 0 rad (  0°) means, the bots barely touched each other
         /// an angle of π rad (180°) means, the bots crashed frontal into each other
         #[prost(float, optional, tag="7")]
-        pub crash_angle: ::core::option::Option<f32>,
+        pub crash_angle: Option<f32>,
     }
     /// a bot pushed another bot over a significant distance
     #[derive(Clone, Copy, PartialEq, ::prost::Message)]
@@ -306,16 +306,16 @@ pub mod game_event {
         pub by_team: i32,
         /// the bot that pushed the other bot
         #[prost(uint32, optional, tag="2")]
-        pub violator: ::core::option::Option<u32>,
+        pub violator: Option<u32>,
         /// the bot of the opposite team that was pushed
         #[prost(uint32, optional, tag="3")]
-        pub victim: ::core::option::Option<u32>,
+        pub victim: Option<u32>,
         /// the location of the push (center between both bots) \[m\]
         #[prost(message, optional, tag="4")]
-        pub location: ::core::option::Option<super::Vector2>,
+        pub location: Option<super::Vector2>,
         /// the pushed distance \[m\]
         #[prost(float, optional, tag="5")]
-        pub pushed_distance: ::core::option::Option<f32>,
+        pub pushed_distance: Option<f32>,
     }
     /// a bot tipped over
     #[derive(Clone, Copy, PartialEq, ::prost::Message)]
@@ -325,13 +325,13 @@ pub mod game_event {
         pub by_team: i32,
         /// the bot that tipped over
         #[prost(uint32, optional, tag="2")]
-        pub by_bot: ::core::option::Option<u32>,
+        pub by_bot: Option<u32>,
         /// the location of the bot \[m\]
         #[prost(message, optional, tag="3")]
-        pub location: ::core::option::Option<super::Vector2>,
+        pub location: Option<super::Vector2>,
         /// the location of the ball at the moment when this foul occurred \[m\]
         #[prost(message, optional, tag="4")]
-        pub ball_location: ::core::option::Option<super::Vector2>,
+        pub ball_location: Option<super::Vector2>,
     }
     /// a bot dropped parts
     #[derive(Clone, Copy, PartialEq, ::prost::Message)]
@@ -341,13 +341,13 @@ pub mod game_event {
         pub by_team: i32,
         /// the bot that dropped the parts
         #[prost(uint32, optional, tag="2")]
-        pub by_bot: ::core::option::Option<u32>,
+        pub by_bot: Option<u32>,
         /// the location where the parts were dropped \[m\]
         #[prost(message, optional, tag="3")]
-        pub location: ::core::option::Option<super::Vector2>,
+        pub location: Option<super::Vector2>,
         /// the location of the ball at the moment when this foul occurred \[m\]
         #[prost(message, optional, tag="4")]
-        pub ball_location: ::core::option::Option<super::Vector2>,
+        pub ball_location: Option<super::Vector2>,
     }
     /// a defender other than the keeper was fully located inside its own defense and touched the ball
     #[derive(Clone, Copy, PartialEq, ::prost::Message)]
@@ -357,13 +357,13 @@ pub mod game_event {
         pub by_team: i32,
         /// the bot that is inside the penalty area
         #[prost(uint32, optional, tag="2")]
-        pub by_bot: ::core::option::Option<u32>,
+        pub by_bot: Option<u32>,
         /// the location of the bot \[m\]
         #[prost(message, optional, tag="3")]
-        pub location: ::core::option::Option<super::Vector2>,
+        pub location: Option<super::Vector2>,
         /// the distance \[m\] from bot case to the nearest point outside the defense area
         #[prost(float, optional, tag="4")]
-        pub distance: ::core::option::Option<f32>,
+        pub distance: Option<f32>,
     }
     /// a defender other than the keeper was partially located inside its own defense area and touched the ball
     #[derive(Clone, Copy, PartialEq, ::prost::Message)]
@@ -373,16 +373,16 @@ pub mod game_event {
         pub by_team: i32,
         /// the bot that is partially inside the penalty area
         #[prost(uint32, optional, tag="2")]
-        pub by_bot: ::core::option::Option<u32>,
+        pub by_bot: Option<u32>,
         /// the location of the bot
         #[prost(message, optional, tag="3")]
-        pub location: ::core::option::Option<super::Vector2>,
+        pub location: Option<super::Vector2>,
         /// the distance \[m\] that the bot is inside the penalty area
         #[prost(float, optional, tag="4")]
-        pub distance: ::core::option::Option<f32>,
+        pub distance: Option<f32>,
         /// the location of the ball at the moment when this foul occurred \[m\]
         #[prost(message, optional, tag="5")]
-        pub ball_location: ::core::option::Option<super::Vector2>,
+        pub ball_location: Option<super::Vector2>,
     }
     /// an attacker touched the ball inside the opponent defense area
     #[derive(Clone, Copy, PartialEq, ::prost::Message)]
@@ -392,13 +392,13 @@ pub mod game_event {
         pub by_team: i32,
         /// the bot that is inside the penalty area
         #[prost(uint32, optional, tag="2")]
-        pub by_bot: ::core::option::Option<u32>,
+        pub by_bot: Option<u32>,
         /// the location of the bot \[m\]
         #[prost(message, optional, tag="3")]
-        pub location: ::core::option::Option<super::Vector2>,
+        pub location: Option<super::Vector2>,
         /// the distance \[m\] that the bot is inside the penalty area
         #[prost(float, optional, tag="4")]
-        pub distance: ::core::option::Option<f32>,
+        pub distance: Option<f32>,
     }
     /// a bot kicked the ball too fast
     #[derive(Clone, Copy, PartialEq, ::prost::Message)]
@@ -408,16 +408,16 @@ pub mod game_event {
         pub by_team: i32,
         /// the bot that kicked too fast
         #[prost(uint32, optional, tag="2")]
-        pub by_bot: ::core::option::Option<u32>,
+        pub by_bot: Option<u32>,
         /// the location of the ball at the time of the highest speed \[m\]
         #[prost(message, optional, tag="3")]
-        pub location: ::core::option::Option<super::Vector2>,
+        pub location: Option<super::Vector2>,
         /// the absolute initial ball speed (kick speed) \[m/s\]
         #[prost(float, optional, tag="4")]
-        pub initial_ball_speed: ::core::option::Option<f32>,
+        pub initial_ball_speed: Option<f32>,
         /// was the ball chipped?
         #[prost(bool, optional, tag="5")]
-        pub chipped: ::core::option::Option<bool>,
+        pub chipped: Option<bool>,
     }
     /// a bot dribbled to ball too far
     #[derive(Clone, Copy, PartialEq, ::prost::Message)]
@@ -427,13 +427,13 @@ pub mod game_event {
         pub by_team: i32,
         /// the bot that dribbled too far
         #[prost(uint32, optional, tag="2")]
-        pub by_bot: ::core::option::Option<u32>,
+        pub by_bot: Option<u32>,
         /// the location where the dribbling started \[m\]
         #[prost(message, optional, tag="3")]
-        pub start: ::core::option::Option<super::Vector2>,
+        pub start: Option<super::Vector2>,
         /// the location where the maximum dribbling distance was reached \[m\]
         #[prost(message, optional, tag="4")]
-        pub end: ::core::option::Option<super::Vector2>,
+        pub end: Option<super::Vector2>,
     }
     /// an attacker touched the opponent robot inside defense area
     #[derive(Clone, Copy, PartialEq, ::prost::Message)]
@@ -443,13 +443,13 @@ pub mod game_event {
         pub by_team: i32,
         /// the bot that touched the opponent robot
         #[prost(uint32, optional, tag="2")]
-        pub by_bot: ::core::option::Option<u32>,
+        pub by_bot: Option<u32>,
         /// the bot of the opposite team that was touched
         #[prost(uint32, optional, tag="4")]
-        pub victim: ::core::option::Option<u32>,
+        pub victim: Option<u32>,
         /// the location of the contact point between both bots \[m\]
         #[prost(message, optional, tag="3")]
-        pub location: ::core::option::Option<super::Vector2>,
+        pub location: Option<super::Vector2>,
     }
     /// an attacker touched the ball multiple times when it was not allowed to
     #[derive(Clone, Copy, PartialEq, ::prost::Message)]
@@ -459,10 +459,10 @@ pub mod game_event {
         pub by_team: i32,
         /// the bot that touched the ball twice
         #[prost(uint32, optional, tag="2")]
-        pub by_bot: ::core::option::Option<u32>,
+        pub by_bot: Option<u32>,
         /// the location of the ball when it was first touched \[m\]
         #[prost(message, optional, tag="3")]
-        pub location: ::core::option::Option<super::Vector2>,
+        pub location: Option<super::Vector2>,
     }
     /// an attacker was located too near to the opponent defense area during stop or free kick
     #[derive(Clone, Copy, PartialEq, ::prost::Message)]
@@ -472,16 +472,16 @@ pub mod game_event {
         pub by_team: i32,
         /// the bot that is too close to the defense area
         #[prost(uint32, optional, tag="2")]
-        pub by_bot: ::core::option::Option<u32>,
+        pub by_bot: Option<u32>,
         /// the location of the bot \[m\]
         #[prost(message, optional, tag="3")]
-        pub location: ::core::option::Option<super::Vector2>,
+        pub location: Option<super::Vector2>,
         /// the distance \[m\] of the bot to the penalty area
         #[prost(float, optional, tag="4")]
-        pub distance: ::core::option::Option<f32>,
+        pub distance: Option<f32>,
         /// the location of the ball at the moment when this foul occurred \[m\]
         #[prost(message, optional, tag="5")]
-        pub ball_location: ::core::option::Option<super::Vector2>,
+        pub ball_location: Option<super::Vector2>,
     }
     /// a bot held the ball for too long
     #[derive(Clone, Copy, PartialEq, ::prost::Message)]
@@ -491,13 +491,13 @@ pub mod game_event {
         pub by_team: i32,
         /// the bot that holds the ball
         #[prost(uint32, optional, tag="2")]
-        pub by_bot: ::core::option::Option<u32>,
+        pub by_bot: Option<u32>,
         /// the location of the ball \[m\]
         #[prost(message, optional, tag="3")]
-        pub location: ::core::option::Option<super::Vector2>,
+        pub location: Option<super::Vector2>,
         /// the duration \[s\] that the bot hold the ball
         #[prost(float, optional, tag="4")]
-        pub duration: ::core::option::Option<f32>,
+        pub duration: Option<f32>,
     }
     /// a bot interfered the ball placement of the other team
     #[derive(Clone, Copy, PartialEq, ::prost::Message)]
@@ -507,10 +507,10 @@ pub mod game_event {
         pub by_team: i32,
         /// the bot that interfered the placement
         #[prost(uint32, optional, tag="2")]
-        pub by_bot: ::core::option::Option<u32>,
+        pub by_bot: Option<u32>,
         /// the location of the bot \[m\]
         #[prost(message, optional, tag="3")]
-        pub location: ::core::option::Option<super::Vector2>,
+        pub location: Option<super::Vector2>,
     }
     /// a team collected multiple yellow cards
     #[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
@@ -527,7 +527,7 @@ pub mod game_event {
         pub by_team: i32,
         /// the list of game events that caused the multiple fouls
         #[prost(message, repeated, tag="2")]
-        pub caused_game_events: ::prost::alloc::vec::Vec<super::GameEvent>,
+        pub caused_game_events: Vec<super::GameEvent>,
     }
     /// a team failed to place the ball multiple times in a row
     #[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
@@ -544,20 +544,20 @@ pub mod game_event {
         pub by_team: i32,
         /// the location of the ball \[m\]
         #[prost(message, optional, tag="2")]
-        pub location: ::core::option::Option<super::Vector2>,
+        pub location: Option<super::Vector2>,
         /// the time \[s\] that was waited
         #[prost(float, optional, tag="3")]
-        pub time: ::core::option::Option<f32>,
+        pub time: Option<f32>,
     }
     /// game was stuck
     #[derive(Clone, Copy, PartialEq, ::prost::Message)]
     pub struct NoProgressInGame {
         /// the location of the ball
         #[prost(message, optional, tag="1")]
-        pub location: ::core::option::Option<super::Vector2>,
+        pub location: Option<super::Vector2>,
         /// the time \[s\] that was waited
         #[prost(float, optional, tag="2")]
-        pub time: ::core::option::Option<f32>,
+        pub time: Option<f32>,
     }
     /// ball placement failed
     #[derive(Clone, Copy, PartialEq, ::prost::Message)]
@@ -567,10 +567,10 @@ pub mod game_event {
         pub by_team: i32,
         /// the remaining distance \[m\] from ball to placement position
         #[prost(float, optional, tag="2")]
-        pub remaining_distance: ::core::option::Option<f32>,
+        pub remaining_distance: Option<f32>,
         /// the distance \[m\] of the nearest own robot to the ball
         #[prost(float, optional, tag="3")]
-        pub nearest_own_bot_distance: ::core::option::Option<f32>,
+        pub nearest_own_bot_distance: Option<f32>,
     }
     /// a team was found guilty for minor unsporting behavior
     #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
@@ -580,7 +580,7 @@ pub mod game_event {
         pub by_team: i32,
         /// an explanation of the situation and decision
         #[prost(string, required, tag="2")]
-        pub reason: ::prost::alloc::string::String,
+        pub reason: String,
     }
     /// a team was found guilty for major unsporting behavior
     #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
@@ -590,7 +590,7 @@ pub mod game_event {
         pub by_team: i32,
         /// an explanation of the situation and decision
         #[prost(string, required, tag="2")]
-        pub reason: ::prost::alloc::string::String,
+        pub reason: String,
     }
     /// a keeper held the ball in its defense area for too long
     #[derive(Clone, Copy, PartialEq, ::prost::Message)]
@@ -600,10 +600,10 @@ pub mod game_event {
         pub by_team: i32,
         /// the location of the ball \[m\]
         #[prost(message, optional, tag="2")]
-        pub location: ::core::option::Option<super::Vector2>,
+        pub location: Option<super::Vector2>,
         /// the duration \[s\] that the keeper hold the ball
         #[prost(float, optional, tag="3")]
-        pub duration: ::core::option::Option<f32>,
+        pub duration: Option<f32>,
     }
     /// a team successfully placed the ball
     #[derive(Clone, Copy, PartialEq, ::prost::Message)]
@@ -613,20 +613,20 @@ pub mod game_event {
         pub by_team: i32,
         /// the time \[s\] taken for placing the ball
         #[prost(float, optional, tag="2")]
-        pub time_taken: ::core::option::Option<f32>,
+        pub time_taken: Option<f32>,
         /// the distance \[m\] between placement location and actual ball position
         #[prost(float, optional, tag="3")]
-        pub precision: ::core::option::Option<f32>,
+        pub precision: Option<f32>,
         /// the distance \[m\] between the initial ball location and the placement position
         #[prost(float, optional, tag="4")]
-        pub distance: ::core::option::Option<f32>,
+        pub distance: Option<f32>,
     }
     /// both teams are prepared - all conditions are met to continue (with kickoff or penalty kick)
     #[derive(Clone, Copy, PartialEq, ::prost::Message)]
     pub struct Prepared {
         /// the time \[s\] taken for preparing
         #[prost(float, optional, tag="1")]
-        pub time_taken: ::core::option::Option<f32>,
+        pub time_taken: Option<f32>,
     }
     /// bots are being substituted by a team
     #[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
@@ -674,13 +674,13 @@ pub mod game_event {
         pub by_team: i32,
         /// number of robots allowed at the moment
         #[prost(int32, optional, tag="2")]
-        pub num_robots_allowed: ::core::option::Option<i32>,
+        pub num_robots_allowed: Option<i32>,
         /// number of robots currently on the field
         #[prost(int32, optional, tag="3")]
-        pub num_robots_on_field: ::core::option::Option<i32>,
+        pub num_robots_on_field: Option<i32>,
         /// the location of the ball at the moment when this foul occurred \[m\]
         #[prost(message, optional, tag="4")]
-        pub ball_location: ::core::option::Option<super::Vector2>,
+        pub ball_location: Option<super::Vector2>,
     }
     /// a robot chipped the ball over the field boundary out of the playing surface
     #[derive(Clone, Copy, PartialEq, ::prost::Message)]
@@ -690,7 +690,7 @@ pub mod game_event {
         pub by_team: i32,
         /// the location of the ball \[m\]
         #[prost(message, optional, tag="2")]
-        pub location: ::core::option::Option<super::Vector2>,
+        pub location: Option<super::Vector2>,
     }
     /// the penalty kick failed (by time or by keeper)
     #[derive(Clone, PartialEq, ::prost::Message)]
@@ -700,12 +700,12 @@ pub mod game_event {
         pub by_team: i32,
         /// the location of the ball at the moment of this event \[m\]
         #[prost(message, optional, tag="2")]
-        pub location: ::core::option::Option<super::Vector2>,
+        pub location: Option<super::Vector2>,
         /// an explanation of the failure
         #[prost(string, optional, tag="3")]
-        pub reason: ::core::option::Option<::prost::alloc::string::String>,
+        pub reason: Option<String>,
     }
-    #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
+    #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, prost::Enumeration)]
     #[repr(i32)]
     pub enum Type {
         UnknownGameEventType = 0,
@@ -866,7 +866,7 @@ pub mod game_event {
             }
         }
         /// Creates an enum from field names used in the ProtoBuf definition.
-        pub fn from_str_name(value: &str) -> ::core::option::Option<Self> {
+        pub fn from_str_name(value: &str) -> Option<Self> {
             match value {
                 "UNKNOWN_GAME_EVENT_TYPE" => Some(Self::UnknownGameEventType),
                 "BALL_LEFT_FIELD_TOUCH_LINE" => Some(Self::BallLeftFieldTouchLine),
@@ -921,7 +921,7 @@ pub mod game_event {
         }
     }
     /// the event that occurred
-    #[derive(Clone, PartialEq, ::prost::Oneof)]
+    #[derive(Clone, PartialEq, prost::Oneof)]
     pub enum Event {
         // Ball out of field events (stopping)
 
@@ -1049,10 +1049,10 @@ pub struct Referee {
     /// A random UUID of the source that is kept constant at the source while running
     /// If multiple sources are broadcasting to the same network, this id can be used to identify individual sources
     #[prost(string, optional, tag="18")]
-    pub source_identifier: ::core::option::Option<::prost::alloc::string::String>,
+    pub source_identifier: Option<String>,
     /// The match type is a meta information about the current match that helps to process the logs after a competition
     #[prost(enumeration="MatchType", optional, tag="19", default="UnknownMatch")]
-    pub match_type: ::core::option::Option<i32>,
+    pub match_type: Option<i32>,
     /// The UNIX timestamp when the packet was sent, in microseconds.
     /// Divide by 1,000,000 to get a time_t.
     #[prost(uint64, required, tag="1")]
@@ -1073,7 +1073,7 @@ pub struct Referee {
     /// If the stage runs over its specified time, this value
     /// becomes negative.
     #[prost(sint64, optional, tag="3")]
-    pub stage_time_left: ::core::option::Option<i64>,
+    pub stage_time_left: Option<i64>,
     #[prost(enumeration="referee::Command", required, tag="4")]
     pub command: i32,
     /// The number of commands issued since startup (mod 2^32).
@@ -1089,19 +1089,19 @@ pub struct Referee {
     #[prost(message, required, tag="8")]
     pub blue: referee::TeamInfo,
     #[prost(message, optional, tag="9")]
-    pub designated_position: ::core::option::Option<referee::Point>,
+    pub designated_position: Option<referee::Point>,
     /// Information about the direction of play.
     /// True, if the blue team will have it's goal on the positive x-axis of the ssl-vision coordinate system.
     /// Obviously, the yellow team will play on the opposite half.
     #[prost(bool, optional, tag="10")]
-    pub blue_team_on_positive_half: ::core::option::Option<bool>,
+    pub blue_team_on_positive_half: Option<bool>,
     /// The command that will be issued after the current stoppage and ball placement to continue the game.
     #[prost(enumeration="referee::Command", optional, tag="12")]
-    pub next_command: ::core::option::Option<i32>,
+    pub next_command: Option<i32>,
     #[prost(message, repeated, tag="16")]
-    pub game_events: ::prost::alloc::vec::Vec<GameEvent>,
+    pub game_events: Vec<GameEvent>,
     #[prost(message, repeated, tag="17")]
-    pub game_event_proposals: ::prost::alloc::vec::Vec<GameEventProposalGroup>,
+    pub game_event_proposals: Vec<GameEventProposalGroup>,
     /// The time in microseconds that is remaining until the current action times out
     /// The time will not be reset. It can get negative.
     /// An autoRef would raise an appropriate event, if the time gets negative.
@@ -1110,10 +1110,10 @@ pub struct Referee {
     ///   * kickoff, penalty kick, force start
     ///   * ball placement
     #[prost(int64, optional, tag="15")]
-    pub current_action_time_remaining: ::core::option::Option<i64>,
+    pub current_action_time_remaining: Option<i64>,
     /// A message that can be displayed to the spectators, like a reason for a stoppage.
     #[prost(string, optional, tag="20")]
-    pub status_message: ::core::option::Option<::prost::alloc::string::String>,
+    pub status_message: Option<String>,
 }
 /// Nested message and enum types in `Referee`.
 pub mod referee {
@@ -1122,7 +1122,7 @@ pub mod referee {
     pub struct TeamInfo {
         /// The team's name (empty string if operator has not typed anything).
         #[prost(string, required, tag="1")]
-        pub name: ::prost::alloc::string::String,
+        pub name: String,
         /// The number of goals scored by the team during normal play and overtime.
         #[prost(uint32, required, tag="2")]
         pub score: u32,
@@ -1133,7 +1133,7 @@ pub mod referee {
         /// If no yellow cards are issued, this array has no elements.
         /// Otherwise, times are ordered from smallest to largest.
         #[prost(uint32, repeated, tag="4")]
-        pub yellow_card_times: ::prost::alloc::vec::Vec<u32>,
+        pub yellow_card_times: Vec<u32>,
         /// The total number of yellow cards ever issued to the team.
         #[prost(uint32, required, tag="5")]
         pub yellow_cards: u32,
@@ -1149,34 +1149,34 @@ pub mod referee {
         pub goalkeeper: u32,
         /// The total number of countable fouls that act towards yellow cards
         #[prost(uint32, optional, tag="9")]
-        pub foul_counter: ::core::option::Option<u32>,
+        pub foul_counter: Option<u32>,
         /// The number of consecutive ball placement failures of this team
         #[prost(uint32, optional, tag="10")]
-        pub ball_placement_failures: ::core::option::Option<u32>,
+        pub ball_placement_failures: Option<u32>,
         /// Indicate if the team is able and allowed to place the ball
         #[prost(bool, optional, tag="12")]
-        pub can_place_ball: ::core::option::Option<bool>,
+        pub can_place_ball: Option<bool>,
         /// The maximum number of bots allowed on the field based on division and cards
         #[prost(uint32, optional, tag="13")]
-        pub max_allowed_bots: ::core::option::Option<u32>,
+        pub max_allowed_bots: Option<u32>,
         /// The team has submitted an intent to substitute one or more robots at the next chance
         #[prost(bool, optional, tag="14")]
-        pub bot_substitution_intent: ::core::option::Option<bool>,
+        pub bot_substitution_intent: Option<bool>,
         /// Indicate if the team reached the maximum allowed ball placement failures and is thus not allowed to place the ball anymore
         #[prost(bool, optional, tag="15")]
-        pub ball_placement_failures_reached: ::core::option::Option<bool>,
+        pub ball_placement_failures_reached: Option<bool>,
         /// The team is allowed to substitute one or more robots currently
         #[prost(bool, optional, tag="16")]
-        pub bot_substitution_allowed: ::core::option::Option<bool>,
+        pub bot_substitution_allowed: Option<bool>,
         /// The number of bot substitutions left by the team in this halftime
         #[prost(uint32, optional, tag="17")]
-        pub bot_substitutions_left: ::core::option::Option<u32>,
+        pub bot_substitutions_left: Option<u32>,
         /// The number of microseconds left for current bot substitution
         #[prost(uint32, optional, tag="18")]
-        pub bot_substitution_time_left: ::core::option::Option<u32>,
+        pub bot_substitution_time_left: Option<u32>,
         /// The color of the hull of the robots of this team
         #[prost(enumeration="super::HullColor", optional, tag="19")]
-        pub hull_color: ::core::option::Option<i32>,
+        pub hull_color: Option<i32>,
     }
     /// The coordinates of the Designated Position. These are measured in
     /// millimetres and correspond to SSL-Vision coordinates. These fields are
@@ -1190,7 +1190,7 @@ pub mod referee {
         pub y: f32,
     }
     /// These are the "coarse" stages of the game.
-    #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
+    #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, prost::Enumeration)]
     #[repr(i32)]
     pub enum Stage {
         /// The first half is about to start.
@@ -1254,7 +1254,7 @@ pub mod referee {
             }
         }
         /// Creates an enum from field names used in the ProtoBuf definition.
-        pub fn from_str_name(value: &str) -> ::core::option::Option<Self> {
+        pub fn from_str_name(value: &str) -> Option<Self> {
             match value {
                 "NORMAL_FIRST_HALF_PRE" => Some(Self::NormalFirstHalfPre),
                 "NORMAL_FIRST_HALF" => Some(Self::NormalFirstHalf),
@@ -1275,7 +1275,7 @@ pub mod referee {
         }
     }
     /// These are the "fine" states of play on the field.
-    #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
+    #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, prost::Enumeration)]
     #[repr(i32)]
     pub enum Command {
         /// All robots should completely stop moving.
@@ -1347,7 +1347,7 @@ pub mod referee {
             }
         }
         /// Creates an enum from field names used in the ProtoBuf definition.
-        pub fn from_str_name(value: &str) -> ::core::option::Option<Self> {
+        pub fn from_str_name(value: &str) -> Option<Self> {
             match value {
                 "HALT" => Some(Self::Halt),
                 "STOP" => Some(Self::Stop),
@@ -1377,16 +1377,16 @@ pub mod referee {
 pub struct GameEventProposalGroup {
     /// Unique ID of this group
     #[prost(string, optional, tag="3")]
-    pub id: ::core::option::Option<::prost::alloc::string::String>,
+    pub id: Option<String>,
     /// The proposed game events
     #[prost(message, repeated, tag="1")]
-    pub game_events: ::prost::alloc::vec::Vec<GameEvent>,
+    pub game_events: Vec<GameEvent>,
     /// Whether the proposal group was accepted
     #[prost(bool, optional, tag="2")]
-    pub accepted: ::core::option::Option<bool>,
+    pub accepted: Option<bool>,
 }
 /// MatchType is a meta information about the current match for easier log processing
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, prost::Enumeration)]
 #[repr(i32)]
 pub enum MatchType {
     /// not set
@@ -1412,7 +1412,7 @@ impl MatchType {
         }
     }
     /// Creates an enum from field names used in the ProtoBuf definition.
-    pub fn from_str_name(value: &str) -> ::core::option::Option<Self> {
+    pub fn from_str_name(value: &str) -> Option<Self> {
         match value {
             "UNKNOWN_MATCH" => Some(Self::UnknownMatch),
             "GROUP_PHASE" => Some(Self::GroupPhase),
@@ -1423,7 +1423,7 @@ impl MatchType {
     }
 }
 /// HullColor is the color of the hull of the robots of a team
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, prost::Enumeration)]
 #[repr(i32)]
 pub enum HullColor {
     /// not set
@@ -1446,7 +1446,7 @@ impl HullColor {
         }
     }
     /// Creates an enum from field names used in the ProtoBuf definition.
-    pub fn from_str_name(value: &str) -> ::core::option::Option<Self> {
+    pub fn from_str_name(value: &str) -> Option<Self> {
         match value {
             "HULL_COLOR_UNKNOWN" => Some(Self::Unknown),
             "HULL_COLOR_DARK" => Some(Self::Dark),
@@ -1458,27 +1458,27 @@ impl HullColor {
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct YellowCard {
     #[prost(uint32, optional, tag="1")]
-    pub id: ::core::option::Option<u32>,
+    pub id: Option<u32>,
     #[prost(message, optional, tag="2")]
-    pub caused_by_game_event: ::core::option::Option<GameEvent>,
+    pub caused_by_game_event: Option<GameEvent>,
     #[prost(message, optional, tag="3")]
-    pub time_remaining: ::core::option::Option<::prost_types::Duration>,
+    pub time_remaining: Option<prost_types::Duration>,
 }
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct RedCard {
     #[prost(uint32, optional, tag="1")]
-    pub id: ::core::option::Option<u32>,
+    pub id: Option<u32>,
     #[prost(message, optional, tag="2")]
-    pub caused_by_game_event: ::core::option::Option<GameEvent>,
+    pub caused_by_game_event: Option<GameEvent>,
 }
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct Foul {
     #[prost(uint32, optional, tag="1")]
-    pub id: ::core::option::Option<u32>,
+    pub id: Option<u32>,
     #[prost(message, optional, tag="2")]
-    pub caused_by_game_event: ::core::option::Option<GameEvent>,
+    pub caused_by_game_event: Option<GameEvent>,
     #[prost(message, optional, tag="3")]
-    pub timestamp: ::core::option::Option<::prost_types::Timestamp>,
+    pub timestamp: Option<prost_types::Timestamp>,
 }
 #[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct Command {
@@ -1489,7 +1489,7 @@ pub struct Command {
 }
 /// Nested message and enum types in `Command`.
 pub mod command {
-    #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
+    #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, prost::Enumeration)]
     #[repr(i32)]
     pub enum Type {
         Unknown = 0,
@@ -1523,7 +1523,7 @@ pub mod command {
             }
         }
         /// Creates an enum from field names used in the ProtoBuf definition.
-        pub fn from_str_name(value: &str) -> ::core::option::Option<Self> {
+        pub fn from_str_name(value: &str) -> Option<Self> {
             match value {
                 "UNKNOWN" => Some(Self::Unknown),
                 "HALT" => Some(Self::Halt),
@@ -1545,11 +1545,11 @@ pub struct GameState {
     #[prost(enumeration="game_state::Type", required, tag="1")]
     pub r#type: i32,
     #[prost(enumeration="Team", optional, tag="2")]
-    pub for_team: ::core::option::Option<i32>,
+    pub for_team: Option<i32>,
 }
 /// Nested message and enum types in `GameState`.
 pub mod game_state {
-    #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
+    #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, prost::Enumeration)]
     #[repr(i32)]
     pub enum Type {
         Unknown = 0,
@@ -1581,7 +1581,7 @@ pub mod game_state {
             }
         }
         /// Creates an enum from field names used in the ProtoBuf definition.
-        pub fn from_str_name(value: &str) -> ::core::option::Option<Self> {
+        pub fn from_str_name(value: &str) -> Option<Self> {
             match value {
                 "UNKNOWN" => Some(Self::Unknown),
                 "HALT" => Some(Self::Halt),
@@ -1601,147 +1601,147 @@ pub mod game_state {
 pub struct Proposal {
     /// The timestamp when the game event proposal occurred
     #[prost(message, optional, tag="1")]
-    pub timestamp: ::core::option::Option<::prost_types::Timestamp>,
+    pub timestamp: Option<prost_types::Timestamp>,
     /// The proposed game event.
     #[prost(message, optional, tag="2")]
-    pub game_event: ::core::option::Option<GameEvent>,
+    pub game_event: Option<GameEvent>,
 }
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct ProposalGroup {
     /// Unique ID of this group
     #[prost(string, optional, tag="4")]
-    pub id: ::core::option::Option<::prost::alloc::string::String>,
+    pub id: Option<String>,
     /// The proposals in this group
     #[prost(message, repeated, tag="1")]
-    pub proposals: ::prost::alloc::vec::Vec<Proposal>,
+    pub proposals: Vec<Proposal>,
     /// Whether the proposal group was accepted
     #[prost(bool, optional, tag="2")]
-    pub accepted: ::core::option::Option<bool>,
+    pub accepted: Option<bool>,
 }
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct TeamInfo {
     #[prost(string, optional, tag="1")]
-    pub name: ::core::option::Option<::prost::alloc::string::String>,
+    pub name: Option<String>,
     #[prost(int32, optional, tag="2")]
-    pub goals: ::core::option::Option<i32>,
+    pub goals: Option<i32>,
     #[prost(int32, optional, tag="3")]
-    pub goalkeeper: ::core::option::Option<i32>,
+    pub goalkeeper: Option<i32>,
     #[prost(message, repeated, tag="4")]
-    pub yellow_cards: ::prost::alloc::vec::Vec<YellowCard>,
+    pub yellow_cards: Vec<YellowCard>,
     #[prost(message, repeated, tag="5")]
-    pub red_cards: ::prost::alloc::vec::Vec<RedCard>,
+    pub red_cards: Vec<RedCard>,
     #[prost(int32, optional, tag="6")]
-    pub timeouts_left: ::core::option::Option<i32>,
+    pub timeouts_left: Option<i32>,
     #[prost(message, optional, tag="7")]
-    pub timeout_time_left: ::core::option::Option<::prost_types::Duration>,
+    pub timeout_time_left: Option<prost_types::Duration>,
     #[prost(bool, optional, tag="8")]
-    pub on_positive_half: ::core::option::Option<bool>,
+    pub on_positive_half: Option<bool>,
     #[prost(message, repeated, tag="9")]
-    pub fouls: ::prost::alloc::vec::Vec<Foul>,
+    pub fouls: Vec<Foul>,
     #[prost(int32, optional, tag="10")]
-    pub ball_placement_failures: ::core::option::Option<i32>,
+    pub ball_placement_failures: Option<i32>,
     #[prost(bool, optional, tag="11")]
-    pub ball_placement_failures_reached: ::core::option::Option<bool>,
+    pub ball_placement_failures_reached: Option<bool>,
     #[prost(bool, optional, tag="12")]
-    pub can_place_ball: ::core::option::Option<bool>,
+    pub can_place_ball: Option<bool>,
     #[prost(int32, optional, tag="13")]
-    pub max_allowed_bots: ::core::option::Option<i32>,
+    pub max_allowed_bots: Option<i32>,
     #[prost(message, optional, tag="14")]
-    pub requests_bot_substitution_since: ::core::option::Option<::prost_types::Timestamp>,
+    pub requests_bot_substitution_since: Option<prost_types::Timestamp>,
     #[prost(message, optional, tag="15")]
-    pub requests_timeout_since: ::core::option::Option<::prost_types::Timestamp>,
+    pub requests_timeout_since: Option<prost_types::Timestamp>,
     #[prost(message, optional, tag="16")]
-    pub requests_emergency_stop_since: ::core::option::Option<::prost_types::Timestamp>,
+    pub requests_emergency_stop_since: Option<prost_types::Timestamp>,
     #[prost(int32, optional, tag="17")]
-    pub challenge_flags: ::core::option::Option<i32>,
+    pub challenge_flags: Option<i32>,
     #[prost(bool, optional, tag="18")]
-    pub bot_substitution_allowed: ::core::option::Option<bool>,
+    pub bot_substitution_allowed: Option<bool>,
     #[prost(int32, optional, tag="19")]
-    pub bot_substitutions_left: ::core::option::Option<i32>,
+    pub bot_substitutions_left: Option<i32>,
     #[prost(message, optional, tag="20")]
-    pub bot_substitution_time_left: ::core::option::Option<::prost_types::Duration>,
+    pub bot_substitution_time_left: Option<prost_types::Duration>,
     #[prost(enumeration="HullColor", optional, tag="21")]
-    pub hull_color: ::core::option::Option<i32>,
+    pub hull_color: Option<i32>,
 }
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct State {
     #[prost(enumeration="referee::Stage", optional, tag="1")]
-    pub stage: ::core::option::Option<i32>,
+    pub stage: Option<i32>,
     #[prost(message, optional, tag="2")]
-    pub command: ::core::option::Option<Command>,
+    pub command: Option<Command>,
     #[prost(message, optional, tag="19")]
-    pub game_state: ::core::option::Option<GameState>,
+    pub game_state: Option<GameState>,
     #[prost(message, optional, tag="4")]
-    pub stage_time_elapsed: ::core::option::Option<::prost_types::Duration>,
+    pub stage_time_elapsed: Option<prost_types::Duration>,
     #[prost(message, optional, tag="5")]
-    pub stage_time_left: ::core::option::Option<::prost_types::Duration>,
+    pub stage_time_left: Option<prost_types::Duration>,
     #[prost(message, optional, tag="6")]
-    pub match_time_start: ::core::option::Option<::prost_types::Timestamp>,
+    pub match_time_start: Option<prost_types::Timestamp>,
     #[prost(map="string, message", tag="8")]
-    pub team_state: ::std::collections::HashMap<::prost::alloc::string::String, TeamInfo>,
+    pub team_state: std::collections::HashMap<String, TeamInfo>,
     #[prost(message, optional, tag="9")]
-    pub placement_pos: ::core::option::Option<Vector2>,
+    pub placement_pos: Option<Vector2>,
     #[prost(message, optional, tag="10")]
-    pub next_command: ::core::option::Option<Command>,
+    pub next_command: Option<Command>,
     #[prost(message, optional, tag="12")]
-    pub current_action_time_remaining: ::core::option::Option<::prost_types::Duration>,
+    pub current_action_time_remaining: Option<prost_types::Duration>,
     #[prost(message, repeated, tag="13")]
-    pub game_events: ::prost::alloc::vec::Vec<GameEvent>,
+    pub game_events: Vec<GameEvent>,
     #[prost(message, repeated, tag="14")]
-    pub proposal_groups: ::prost::alloc::vec::Vec<ProposalGroup>,
+    pub proposal_groups: Vec<ProposalGroup>,
     #[prost(enumeration="Division", optional, tag="15")]
-    pub division: ::core::option::Option<i32>,
+    pub division: Option<i32>,
     #[prost(enumeration="Team", optional, tag="17")]
-    pub first_kickoff_team: ::core::option::Option<i32>,
+    pub first_kickoff_team: Option<i32>,
     #[prost(enumeration="MatchType", optional, tag="18")]
-    pub match_type: ::core::option::Option<i32>,
+    pub match_type: Option<i32>,
     #[prost(message, optional, tag="20")]
-    pub ready_continue_time: ::core::option::Option<::prost_types::Timestamp>,
+    pub ready_continue_time: Option<prost_types::Timestamp>,
     #[prost(message, optional, tag="21")]
-    pub shootout_state: ::core::option::Option<ShootoutState>,
+    pub shootout_state: Option<ShootoutState>,
     #[prost(string, optional, tag="22")]
-    pub status_message: ::core::option::Option<::prost::alloc::string::String>,
+    pub status_message: Option<String>,
     /// The maximum number of bots per team (overwrites the division config)
     #[prost(int32, optional, tag="23")]
-    pub max_bots_per_team: ::core::option::Option<i32>,
+    pub max_bots_per_team: Option<i32>,
 }
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct ShootoutState {
     #[prost(enumeration="Team", optional, tag="1")]
-    pub next_team: ::core::option::Option<i32>,
+    pub next_team: Option<i32>,
     #[prost(map="string, int32", tag="2")]
-    pub number_of_attempts: ::std::collections::HashMap<::prost::alloc::string::String, i32>,
+    pub number_of_attempts: std::collections::HashMap<String, i32>,
 }
 /// A state change
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct StateChange {
     /// A unique increasing id
     #[prost(int32, optional, tag="1")]
-    pub id: ::core::option::Option<i32>,
+    pub id: Option<i32>,
     /// The previous state
     #[prost(message, optional, tag="2")]
-    pub state_pre: ::core::option::Option<State>,
+    pub state_pre: Option<State>,
     /// The state after the change was applied
     #[prost(message, optional, tag="3")]
-    pub state: ::core::option::Option<State>,
+    pub state: Option<State>,
     /// The change itself
     #[prost(message, optional, tag="4")]
-    pub change: ::core::option::Option<Change>,
+    pub change: Option<Change>,
     /// The timestamp when the change was triggered
     #[prost(message, optional, tag="5")]
-    pub timestamp: ::core::option::Option<::prost_types::Timestamp>,
+    pub timestamp: Option<prost_types::Timestamp>,
 }
 /// A certain change
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct Change {
     /// An identifier of the origin that triggered the change
     #[prost(string, optional, tag="1")]
-    pub origin: ::core::option::Option<::prost::alloc::string::String>,
+    pub origin: Option<String>,
     /// Is this change revertible?
     #[prost(bool, optional, tag="16")]
-    pub revertible: ::core::option::Option<bool>,
+    pub revertible: Option<bool>,
     #[prost(oneof="change::Change", tags="2, 3, 4, 5, 6, 7, 8, 19, 9, 12, 13, 14, 15, 17, 18, 20")]
-    pub change: ::core::option::Option<change::Change>,
+    pub change: Option<change::Change>,
 }
 /// Nested message and enum types in `Change`.
 pub mod change {
@@ -1750,165 +1750,165 @@ pub mod change {
     pub struct NewCommand {
         /// The command
         #[prost(message, optional, tag="1")]
-        pub command: ::core::option::Option<super::Command>,
+        pub command: Option<super::Command>,
     }
     /// Switch to a new stage
     #[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
     pub struct ChangeStage {
         /// The new stage
         #[prost(enumeration="super::referee::Stage", optional, tag="1")]
-        pub new_stage: ::core::option::Option<i32>,
+        pub new_stage: Option<i32>,
     }
     /// Set the ball placement pos
     #[derive(Clone, Copy, PartialEq, ::prost::Message)]
     pub struct SetBallPlacementPos {
         /// The position in \[m\]
         #[prost(message, optional, tag="1")]
-        pub pos: ::core::option::Option<super::Vector2>,
+        pub pos: Option<super::Vector2>,
     }
     /// Add a new yellow card
     #[derive(Clone, PartialEq, ::prost::Message)]
     pub struct AddYellowCard {
         /// The team that the card is for
         #[prost(enumeration="super::Team", optional, tag="1")]
-        pub for_team: ::core::option::Option<i32>,
+        pub for_team: Option<i32>,
         /// The game event that caused the card
         #[prost(message, optional, tag="2")]
-        pub caused_by_game_event: ::core::option::Option<super::GameEvent>,
+        pub caused_by_game_event: Option<super::GameEvent>,
     }
     /// Add a new red card
     #[derive(Clone, PartialEq, ::prost::Message)]
     pub struct AddRedCard {
         /// The team that the card is for
         #[prost(enumeration="super::Team", optional, tag="1")]
-        pub for_team: ::core::option::Option<i32>,
+        pub for_team: Option<i32>,
         /// The game event that caused the card
         #[prost(message, optional, tag="2")]
-        pub caused_by_game_event: ::core::option::Option<super::GameEvent>,
+        pub caused_by_game_event: Option<super::GameEvent>,
     }
     /// Trigger when a yellow card timed out
     #[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
     pub struct YellowCardOver {
         /// The team that the card was for
         #[prost(enumeration="super::Team", optional, tag="1")]
-        pub for_team: ::core::option::Option<i32>,
+        pub for_team: Option<i32>,
     }
     /// Add a new game event
     #[derive(Clone, PartialEq, ::prost::Message)]
     pub struct AddGameEvent {
         /// The game event
         #[prost(message, optional, tag="1")]
-        pub game_event: ::core::option::Option<super::GameEvent>,
+        pub game_event: Option<super::GameEvent>,
     }
     /// Add a new passive game event (that is only logged, but does not automatically trigger anything)
     #[derive(Clone, PartialEq, ::prost::Message)]
     pub struct AddPassiveGameEvent {
         /// The game event
         #[prost(message, optional, tag="1")]
-        pub game_event: ::core::option::Option<super::GameEvent>,
+        pub game_event: Option<super::GameEvent>,
     }
     /// Add a new proposal (i.e. from an auto referee for majority voting)
     #[derive(Clone, PartialEq, ::prost::Message)]
     pub struct AddProposal {
         /// The proposal
         #[prost(message, optional, tag="1")]
-        pub proposal: ::core::option::Option<super::Proposal>,
+        pub proposal: Option<super::Proposal>,
     }
     /// Accept a proposal group (that contain one or more proposals of the same type)
     #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
     pub struct AcceptProposalGroup {
         /// The id of the group
         #[prost(string, optional, tag="3")]
-        pub group_id: ::core::option::Option<::prost::alloc::string::String>,
+        pub group_id: Option<String>,
         /// An identifier of the acceptor
         #[prost(string, optional, tag="2")]
-        pub accepted_by: ::core::option::Option<::prost::alloc::string::String>,
+        pub accepted_by: Option<String>,
     }
     /// Update some configuration
     #[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
     pub struct UpdateConfig {
         /// The division to play with
         #[prost(enumeration="super::Division", optional, tag="1")]
-        pub division: ::core::option::Option<i32>,
+        pub division: Option<i32>,
         /// the team that does/did the first kick off
         #[prost(enumeration="super::Team", optional, tag="2")]
-        pub first_kickoff_team: ::core::option::Option<i32>,
+        pub first_kickoff_team: Option<i32>,
         /// The match type
         #[prost(enumeration="super::MatchType", optional, tag="4")]
-        pub match_type: ::core::option::Option<i32>,
+        pub match_type: Option<i32>,
         /// The number of robots per team
         #[prost(message, optional, tag="5")]
-        pub max_robots_per_team: ::core::option::Option<i32>,
+        pub max_robots_per_team: Option<i32>,
     }
     /// Update the current state of a team (all fields that should be updated are set)
     #[derive(Clone, PartialEq, ::prost::Message)]
     pub struct UpdateTeamState {
         /// The team
         #[prost(enumeration="super::Team", optional, tag="1")]
-        pub for_team: ::core::option::Option<i32>,
+        pub for_team: Option<i32>,
         /// Change the name of the team
         #[prost(message, optional, tag="2")]
-        pub team_name: ::core::option::Option<::prost::alloc::string::String>,
+        pub team_name: Option<String>,
         /// Change the number of goals that the teams has at the moment
         #[prost(message, optional, tag="3")]
-        pub goals: ::core::option::Option<i32>,
+        pub goals: Option<i32>,
         /// The id of the goal keeper
         #[prost(message, optional, tag="4")]
-        pub goalkeeper: ::core::option::Option<i32>,
+        pub goalkeeper: Option<i32>,
         /// The number of timeouts that the team has left
         #[prost(message, optional, tag="5")]
-        pub timeouts_left: ::core::option::Option<i32>,
+        pub timeouts_left: Option<i32>,
         /// The timeout time that the team has left
         #[prost(message, optional, tag="6")]
-        pub timeout_time_left: ::core::option::Option<::prost::alloc::string::String>,
+        pub timeout_time_left: Option<String>,
         /// Does the team play on the positive or the negative half (in ssl-vision coordinates)?
         #[prost(message, optional, tag="7")]
-        pub on_positive_half: ::core::option::Option<bool>,
+        pub on_positive_half: Option<bool>,
         /// The number of ball placement failures
         #[prost(message, optional, tag="8")]
-        pub ball_placement_failures: ::core::option::Option<i32>,
+        pub ball_placement_failures: Option<i32>,
         /// Can the team place the ball, or is ball placement for this team disabled and should be skipped?
         #[prost(message, optional, tag="9")]
-        pub can_place_ball: ::core::option::Option<bool>,
+        pub can_place_ball: Option<bool>,
         /// The number of challenge flags that the team has left
         #[prost(message, optional, tag="21")]
-        pub challenge_flags_left: ::core::option::Option<i32>,
+        pub challenge_flags_left: Option<i32>,
         /// The number of bot substitutions left by the team in this halftime
         #[prost(message, optional, tag="22")]
-        pub bot_substitutions_left: ::core::option::Option<i32>,
+        pub bot_substitutions_left: Option<i32>,
         /// Does the team want to substitute a robot in the next possible situation?
         #[prost(message, optional, tag="10")]
-        pub requests_bot_substitution: ::core::option::Option<bool>,
+        pub requests_bot_substitution: Option<bool>,
         /// Does the team want to take a timeout in the next possible situation?
         #[prost(message, optional, tag="17")]
-        pub requests_timeout: ::core::option::Option<bool>,
+        pub requests_timeout: Option<bool>,
         /// Does the team want to challenge a recent decision of the referee?
         #[prost(message, optional, tag="18")]
-        pub requests_challenge: ::core::option::Option<bool>,
+        pub requests_challenge: Option<bool>,
         /// Does the team want to request an emergency stop?
         #[prost(message, optional, tag="19")]
-        pub requests_emergency_stop: ::core::option::Option<bool>,
+        pub requests_emergency_stop: Option<bool>,
         /// Update a certain yellow card of the team
         #[prost(message, optional, tag="20")]
-        pub yellow_card: ::core::option::Option<super::YellowCard>,
+        pub yellow_card: Option<super::YellowCard>,
         /// Update a certain red card of the team
         #[prost(message, optional, tag="12")]
-        pub red_card: ::core::option::Option<super::RedCard>,
+        pub red_card: Option<super::RedCard>,
         /// Update a certain foul of the team
         #[prost(message, optional, tag="13")]
-        pub foul: ::core::option::Option<super::Foul>,
+        pub foul: Option<super::Foul>,
         /// Remove the yellow card with this id
         #[prost(message, optional, tag="14")]
-        pub remove_yellow_card: ::core::option::Option<u32>,
+        pub remove_yellow_card: Option<u32>,
         /// Remove the red card with this id
         #[prost(message, optional, tag="15")]
-        pub remove_red_card: ::core::option::Option<u32>,
+        pub remove_red_card: Option<u32>,
         /// Remove the foul with this id
         #[prost(message, optional, tag="16")]
-        pub remove_foul: ::core::option::Option<u32>,
+        pub remove_foul: Option<u32>,
         /// The color of the hull
         #[prost(enumeration="super::HullColor", optional, tag="23")]
-        pub hull_color: ::core::option::Option<i32>,
+        pub hull_color: Option<i32>,
     }
     /// Switch the team colors
     #[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
@@ -1919,22 +1919,22 @@ pub mod change {
     pub struct Revert {
         /// The id of the change
         #[prost(int32, optional, tag="1")]
-        pub change_id: ::core::option::Option<i32>,
+        pub change_id: Option<i32>,
     }
     /// Change the current game state
     #[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
     pub struct NewGameState {
         /// The new game state
         #[prost(message, optional, tag="1")]
-        pub game_state: ::core::option::Option<super::GameState>,
+        pub game_state: Option<super::GameState>,
     }
     #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
     pub struct SetStatusMessage {
         /// The new status message
         #[prost(string, optional, tag="1")]
-        pub status_message: ::core::option::Option<::prost::alloc::string::String>,
+        pub status_message: Option<String>,
     }
-    #[derive(Clone, PartialEq, ::prost::Oneof)]
+    #[derive(Clone, PartialEq, prost::Oneof)]
     pub enum Change {
         #[prost(message, tag="2")]
         NewCommandChange(NewCommand),
@@ -1975,50 +1975,50 @@ pub mod change {
 pub struct GcState {
     /// the state of each team
     #[prost(map="string, message", tag="1")]
-    pub team_state: ::std::collections::HashMap<::prost::alloc::string::String, GcStateTeam>,
+    pub team_state: std::collections::HashMap<String, GcStateTeam>,
     /// the states of the auto referees
     #[prost(map="string, message", tag="2")]
-    pub auto_ref_state: ::std::collections::HashMap<::prost::alloc::string::String, GcStateAutoRef>,
+    pub auto_ref_state: std::collections::HashMap<String, GcStateAutoRef>,
     /// the attached trackers (uuid -> source_name)
     #[prost(map="string, string", tag="3")]
-    pub trackers: ::std::collections::HashMap<::prost::alloc::string::String, ::prost::alloc::string::String>,
+    pub trackers: std::collections::HashMap<String, String>,
     /// the next actions that can be executed when continuing
     #[prost(message, repeated, tag="4")]
-    pub continue_actions: ::prost::alloc::vec::Vec<ContinueAction>,
+    pub continue_actions: Vec<ContinueAction>,
     /// the next actions that can be executed when continuing
     #[prost(message, repeated, tag="5")]
-    pub continue_hints: ::prost::alloc::vec::Vec<ContinueHint>,
+    pub continue_hints: Vec<ContinueHint>,
 }
 /// The GC state for a single team
 #[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct GcStateTeam {
     /// true: The team is connected
     #[prost(bool, optional, tag="1")]
-    pub connected: ::core::option::Option<bool>,
+    pub connected: Option<bool>,
     /// true: The team connected via TLS with a verified certificate
     #[prost(bool, optional, tag="2")]
-    pub connection_verified: ::core::option::Option<bool>,
+    pub connection_verified: Option<bool>,
     /// true: The remote control for the team is connected
     #[prost(bool, optional, tag="3")]
-    pub remote_control_connected: ::core::option::Option<bool>,
+    pub remote_control_connected: Option<bool>,
     /// true: The remote control for the team connected via TLS with a verified certificate
     #[prost(bool, optional, tag="4")]
-    pub remote_control_connection_verified: ::core::option::Option<bool>,
+    pub remote_control_connection_verified: Option<bool>,
     /// the advantage choice of the team
     #[prost(message, optional, tag="5")]
-    pub advantage_choice: ::core::option::Option<TeamAdvantageChoice>,
+    pub advantage_choice: Option<TeamAdvantageChoice>,
 }
 /// The choice from a team regarding the advantage rule
 #[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct TeamAdvantageChoice {
     /// the choice of the team
     #[prost(enumeration="team_advantage_choice::AdvantageChoice", optional, tag="1")]
-    pub choice: ::core::option::Option<i32>,
+    pub choice: Option<i32>,
 }
 /// Nested message and enum types in `TeamAdvantageChoice`.
 pub mod team_advantage_choice {
     /// possible advantage choices
-    #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
+    #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, prost::Enumeration)]
     #[repr(i32)]
     pub enum AdvantageChoice {
         /// stop the game
@@ -2038,7 +2038,7 @@ pub mod team_advantage_choice {
             }
         }
         /// Creates an enum from field names used in the ProtoBuf definition.
-        pub fn from_str_name(value: &str) -> ::core::option::Option<Self> {
+        pub fn from_str_name(value: &str) -> Option<Self> {
             match value {
                 "STOP" => Some(Self::Stop),
                 "CONTINUE" => Some(Self::Continue),
@@ -2052,43 +2052,43 @@ pub mod team_advantage_choice {
 pub struct GcStateAutoRef {
     /// true: The autoRef connected via TLS with a verified certificate
     #[prost(bool, optional, tag="1")]
-    pub connection_verified: ::core::option::Option<bool>,
+    pub connection_verified: Option<bool>,
 }
 /// GC state of a tracker
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct GcStateTracker {
     /// Name of the source
     #[prost(string, optional, tag="1")]
-    pub source_name: ::core::option::Option<::prost::alloc::string::String>,
+    pub source_name: Option<String>,
     /// UUID of the source
     #[prost(string, optional, tag="4")]
-    pub uuid: ::core::option::Option<::prost::alloc::string::String>,
+    pub uuid: Option<String>,
     /// Current ball
     #[prost(message, optional, tag="2")]
-    pub ball: ::core::option::Option<Ball>,
+    pub ball: Option<Ball>,
     /// Current robots
     #[prost(message, repeated, tag="3")]
-    pub robots: ::prost::alloc::vec::Vec<Robot>,
+    pub robots: Vec<Robot>,
 }
 /// The ball state
 #[derive(Clone, Copy, PartialEq, ::prost::Message)]
 pub struct Ball {
     /// ball position \[m\]
     #[prost(message, optional, tag="1")]
-    pub pos: ::core::option::Option<Vector3>,
+    pub pos: Option<Vector3>,
     /// ball velocity \[m/s\]
     #[prost(message, optional, tag="2")]
-    pub vel: ::core::option::Option<Vector3>,
+    pub vel: Option<Vector3>,
 }
 /// The robot state
 #[derive(Clone, Copy, PartialEq, ::prost::Message)]
 pub struct Robot {
     /// robot id and team
     #[prost(message, optional, tag="1")]
-    pub id: ::core::option::Option<RobotId>,
+    pub id: Option<RobotId>,
     /// robot position \[m\]
     #[prost(message, optional, tag="2")]
-    pub pos: ::core::option::Option<Vector2>,
+    pub pos: Option<Vector2>,
 }
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct ContinueAction {
@@ -2100,17 +2100,17 @@ pub struct ContinueAction {
     pub for_team: i32,
     /// list of issues that hinders the game from continuing
     #[prost(string, repeated, tag="3")]
-    pub continuation_issues: ::prost::alloc::vec::Vec<::prost::alloc::string::String>,
+    pub continuation_issues: Vec<String>,
     /// timestamp at which the action will be ready (to give some preparation time)
     #[prost(message, optional, tag="4")]
-    pub ready_at: ::core::option::Option<::prost_types::Timestamp>,
+    pub ready_at: Option<prost_types::Timestamp>,
     /// state of the action
     #[prost(enumeration="continue_action::State", optional, tag="5")]
-    pub state: ::core::option::Option<i32>,
+    pub state: Option<i32>,
 }
 /// Nested message and enum types in `ContinueAction`.
 pub mod continue_action {
-    #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
+    #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, prost::Enumeration)]
     #[repr(i32)]
     pub enum Type {
         Unknown = 0,
@@ -2168,7 +2168,7 @@ pub mod continue_action {
             }
         }
         /// Creates an enum from field names used in the ProtoBuf definition.
-        pub fn from_str_name(value: &str) -> ::core::option::Option<Self> {
+        pub fn from_str_name(value: &str) -> Option<Self> {
             match value {
                 "TYPE_UNKNOWN" => Some(Self::Unknown),
                 "HALT" => Some(Self::Halt),
@@ -2196,7 +2196,7 @@ pub mod continue_action {
             }
         }
     }
-    #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
+    #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, prost::Enumeration)]
     #[repr(i32)]
     pub enum State {
         Unknown = 0,
@@ -2222,7 +2222,7 @@ pub mod continue_action {
             }
         }
         /// Creates an enum from field names used in the ProtoBuf definition.
-        pub fn from_str_name(value: &str) -> ::core::option::Option<Self> {
+        pub fn from_str_name(value: &str) -> Option<Self> {
             match value {
                 "STATE_UNKNOWN" => Some(Self::Unknown),
                 "BLOCKED" => Some(Self::Blocked),
@@ -2238,31 +2238,31 @@ pub mod continue_action {
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct ContinueHint {
     #[prost(string, required, tag="1")]
-    pub message: ::prost::alloc::string::String,
+    pub message: String,
 }
 /// The engine config
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct Config {
     /// The behavior for each game event
     #[prost(map="string, enumeration(config::Behavior)", tag="1")]
-    pub game_event_behavior: ::std::collections::HashMap<::prost::alloc::string::String, i32>,
+    pub game_event_behavior: std::collections::HashMap<String, i32>,
     /// The config for each auto referee
     #[prost(map="string, message", tag="2")]
-    pub auto_ref_configs: ::std::collections::HashMap<::prost::alloc::string::String, AutoRefConfig>,
+    pub auto_ref_configs: std::collections::HashMap<String, AutoRefConfig>,
     /// The selected tracker source
     #[prost(string, optional, tag="3")]
-    pub active_tracker_source: ::core::option::Option<::prost::alloc::string::String>,
+    pub active_tracker_source: Option<String>,
     /// The list of available teams
     #[prost(string, repeated, tag="4")]
-    pub teams: ::prost::alloc::vec::Vec<::prost::alloc::string::String>,
+    pub teams: Vec<String>,
     /// Enable or disable auto continuation
     #[prost(bool, optional, tag="5")]
-    pub auto_continue: ::core::option::Option<bool>,
+    pub auto_continue: Option<bool>,
 }
 /// Nested message and enum types in `Config`.
 pub mod config {
     /// Behaviors for each game event
-    #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
+    #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, prost::Enumeration)]
     #[repr(i32)]
     pub enum Behavior {
         /// Not set or unknown
@@ -2294,7 +2294,7 @@ pub mod config {
             }
         }
         /// Creates an enum from field names used in the ProtoBuf definition.
-        pub fn from_str_name(value: &str) -> ::core::option::Option<Self> {
+        pub fn from_str_name(value: &str) -> Option<Self> {
             match value {
                 "BEHAVIOR_UNKNOWN" => Some(Self::Unknown),
                 "BEHAVIOR_ACCEPT" => Some(Self::Accept),
@@ -2312,12 +2312,12 @@ pub mod config {
 pub struct AutoRefConfig {
     /// The game event behaviors for this auto referee
     #[prost(map="string, enumeration(auto_ref_config::Behavior)", tag="1")]
-    pub game_event_behavior: ::std::collections::HashMap<::prost::alloc::string::String, i32>,
+    pub game_event_behavior: std::collections::HashMap<String, i32>,
 }
 /// Nested message and enum types in `AutoRefConfig`.
 pub mod auto_ref_config {
     /// Behaviors for the game events reported by this auto referee
-    #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
+    #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, prost::Enumeration)]
     #[repr(i32)]
     pub enum Behavior {
         /// Not set or unknown
@@ -2343,7 +2343,7 @@ pub mod auto_ref_config {
             }
         }
         /// Creates an enum from field names used in the ProtoBuf definition.
-        pub fn from_str_name(value: &str) -> ::core::option::Option<Self> {
+        pub fn from_str_name(value: &str) -> Option<Self> {
             match value {
                 "BEHAVIOR_UNKNOWN" => Some(Self::Unknown),
                 "BEHAVIOR_ACCEPT" => Some(Self::Accept),
@@ -2359,16 +2359,16 @@ pub mod auto_ref_config {
 pub struct Output {
     /// The current match state
     #[prost(message, optional, tag="1")]
-    pub match_state: ::core::option::Option<State>,
+    pub match_state: Option<State>,
     /// The current GC state
     #[prost(message, optional, tag="2")]
-    pub gc_state: ::core::option::Option<GcState>,
+    pub gc_state: Option<GcState>,
     /// The protocol
     #[prost(message, optional, tag="3")]
-    pub protocol: ::core::option::Option<Protocol>,
+    pub protocol: Option<Protocol>,
     /// The engine config
     #[prost(message, optional, tag="4")]
-    pub config: ::core::option::Option<Config>,
+    pub config: Option<Config>,
 }
 /// The game protocol
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -2377,42 +2377,42 @@ pub struct Protocol {
     /// Entries that were already sent are not sent again, because the protocol is immutable anyway.
     /// But if the game is reset, the whole protocol must be replaced. That's what this flag is for.
     #[prost(bool, optional, tag="1")]
-    pub delta: ::core::option::Option<bool>,
+    pub delta: Option<bool>,
     /// The (delta) list of entries
     #[prost(message, repeated, tag="2")]
-    pub entry: ::prost::alloc::vec::Vec<ProtocolEntry>,
+    pub entry: Vec<ProtocolEntry>,
 }
 /// A protocol entry of a change
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct ProtocolEntry {
     /// Id of the entry
     #[prost(int32, optional, tag="1")]
-    pub id: ::core::option::Option<i32>,
+    pub id: Option<i32>,
     /// The change that was made
     #[prost(message, optional, tag="2")]
-    pub change: ::core::option::Option<Change>,
+    pub change: Option<Change>,
     /// The match time elapsed when this change was made
     #[prost(message, optional, tag="3")]
-    pub match_time_elapsed: ::core::option::Option<::prost_types::Duration>,
+    pub match_time_elapsed: Option<prost_types::Duration>,
     /// The stage time elapsed when this change was made
     #[prost(message, optional, tag="4")]
-    pub stage_time_elapsed: ::core::option::Option<::prost_types::Duration>,
+    pub stage_time_elapsed: Option<prost_types::Duration>,
 }
 /// Message format that can be send from the client to the GC
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct Input {
     /// A change to be enqueued into the GC engine
     #[prost(message, optional, tag="1")]
-    pub change: ::core::option::Option<Change>,
+    pub change: Option<Change>,
     /// Reset the match
     #[prost(bool, optional, tag="2")]
-    pub reset_match: ::core::option::Option<bool>,
+    pub reset_match: Option<bool>,
     /// An updated config delta
     #[prost(message, optional, tag="3")]
-    pub config_delta: ::core::option::Option<Config>,
+    pub config_delta: Option<Config>,
     /// Continue with action
     #[prost(message, optional, tag="4")]
-    pub continue_action: ::core::option::Option<ContinueAction>,
+    pub continue_action: Option<ContinueAction>,
 }
 #[derive(Clone, Copy, PartialEq, ::prost::Message)]
 pub struct SslDetectionBall {
@@ -2420,7 +2420,7 @@ pub struct SslDetectionBall {
     #[prost(float, required, tag="1")]
     pub confidence: f32,
     #[prost(uint32, optional, tag="2")]
-    pub area: ::core::option::Option<u32>,
+    pub area: Option<u32>,
     /// X-coordinate in \[mm\] in global ssl-vision coordinate system
     #[prost(float, required, tag="3")]
     pub x: f32,
@@ -2430,7 +2430,7 @@ pub struct SslDetectionBall {
     /// Z-coordinate in \[mm\] in global ssl-vision coordinate system
     /// Not supported by ssl-vision, but might be set by simulators
     #[prost(float, optional, tag="5")]
-    pub z: ::core::option::Option<f32>,
+    pub z: Option<f32>,
     /// X-coordinate in \[pixel\] in the image
     #[prost(float, required, tag="6")]
     pub pixel_x: f32,
@@ -2445,7 +2445,7 @@ pub struct SslDetectionRobot {
     pub confidence: f32,
     /// Id of the robot
     #[prost(uint32, optional, tag="2")]
-    pub robot_id: ::core::option::Option<u32>,
+    pub robot_id: Option<u32>,
     /// X-coordinate in \[mm\] in global ssl-vision coordinate system
     #[prost(float, required, tag="3")]
     pub x: f32,
@@ -2454,7 +2454,7 @@ pub struct SslDetectionRobot {
     pub y: f32,
     /// Orientation in \[rad\]
     #[prost(float, optional, tag="5")]
-    pub orientation: ::core::option::Option<f32>,
+    pub orientation: Option<f32>,
     /// X-coordinate in \[pixel\] in the image
     #[prost(float, required, tag="6")]
     pub pixel_x: f32,
@@ -2463,7 +2463,7 @@ pub struct SslDetectionRobot {
     pub pixel_y: f32,
     /// Height, as configured in ssl-vision for the respective team
     #[prost(float, optional, tag="8")]
-    pub height: ::core::option::Option<f32>,
+    pub height: Option<f32>,
 }
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct SslDetectionFrame {
@@ -2479,19 +2479,19 @@ pub struct SslDetectionFrame {
     /// Camera timestamp in \[seconds\] as reported by the camera, if supported
     /// This is not necessarily a unix timestamp
     #[prost(double, optional, tag="8")]
-    pub t_capture_camera: ::core::option::Option<f64>,
+    pub t_capture_camera: Option<f64>,
     /// Identifier of the camera
     #[prost(uint32, required, tag="4")]
     pub camera_id: u32,
     /// Detected balls
     #[prost(message, repeated, tag="5")]
-    pub balls: ::prost::alloc::vec::Vec<SslDetectionBall>,
+    pub balls: Vec<SslDetectionBall>,
     /// Detected yellow robots
     #[prost(message, repeated, tag="6")]
-    pub robots_yellow: ::prost::alloc::vec::Vec<SslDetectionRobot>,
+    pub robots_yellow: Vec<SslDetectionRobot>,
     /// Detected blue robots
     #[prost(message, repeated, tag="7")]
-    pub robots_blue: ::prost::alloc::vec::Vec<SslDetectionRobot>,
+    pub robots_blue: Vec<SslDetectionRobot>,
 }
 /// A 2D float vector.
 #[derive(Clone, Copy, PartialEq, ::prost::Message)]
@@ -2511,7 +2511,7 @@ pub struct Vector2f {
 pub struct SslFieldLineSegment {
     /// Name of this field marking.
     #[prost(string, required, tag="1")]
-    pub name: ::prost::alloc::string::String,
+    pub name: String,
     /// Start point of the line segment.
     #[prost(message, required, tag="2")]
     pub p1: Vector2f,
@@ -2523,7 +2523,7 @@ pub struct SslFieldLineSegment {
     pub thickness: f32,
     /// The type of this shape
     #[prost(enumeration="SslFieldShapeType", optional, tag="5")]
-    pub r#type: ::core::option::Option<i32>,
+    pub r#type: Option<i32>,
 }
 /// Represents a field marking as a circular arc segment represented by center point, a
 /// start angle, an end angle, and an arc thickness.
@@ -2531,7 +2531,7 @@ pub struct SslFieldLineSegment {
 pub struct SslFieldCircularArc {
     /// Name of this field marking.
     #[prost(string, required, tag="1")]
-    pub name: ::prost::alloc::string::String,
+    pub name: String,
     /// Center point of the circular arc.
     #[prost(message, required, tag="2")]
     pub center: Vector2f,
@@ -2549,7 +2549,7 @@ pub struct SslFieldCircularArc {
     pub thickness: f32,
     /// The type of this shape
     #[prost(enumeration="SslFieldShapeType", optional, tag="7")]
-    pub r#type: ::core::option::Option<i32>,
+    pub r#type: Option<i32>,
 }
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct SslGeometryFieldSize {
@@ -2570,40 +2570,40 @@ pub struct SslGeometryFieldSize {
     pub boundary_width: i32,
     /// Boundary width at the goal lines (distance from goal line centers to boundary walls) in mm
     #[prost(int32, optional, tag="16")]
-    pub boundary_width_goal_line: ::core::option::Option<i32>,
+    pub boundary_width_goal_line: Option<i32>,
     /// Generated line segments based on the other parameters
     #[prost(message, repeated, tag="6")]
-    pub field_lines: ::prost::alloc::vec::Vec<SslFieldLineSegment>,
+    pub field_lines: Vec<SslFieldLineSegment>,
     /// Generated circular arcs based on the other parameters
     #[prost(message, repeated, tag="7")]
-    pub field_arcs: ::prost::alloc::vec::Vec<SslFieldCircularArc>,
+    pub field_arcs: Vec<SslFieldCircularArc>,
     /// Depth of the penalty/defense area (measured between line centers) in mm
     #[prost(int32, optional, tag="8")]
-    pub penalty_area_depth: ::core::option::Option<i32>,
+    pub penalty_area_depth: Option<i32>,
     /// Width of the penalty/defense area (measured between line centers) in mm
     #[prost(int32, optional, tag="9")]
-    pub penalty_area_width: ::core::option::Option<i32>,
+    pub penalty_area_width: Option<i32>,
     /// Radius of the center circle (measured between line centers) in mm
     #[prost(int32, optional, tag="10")]
-    pub center_circle_radius: ::core::option::Option<i32>,
+    pub center_circle_radius: Option<i32>,
     /// Thickness/width of the lines on the field in mm
     #[prost(int32, optional, tag="11")]
-    pub line_thickness: ::core::option::Option<i32>,
+    pub line_thickness: Option<i32>,
     /// Distance between the goal center and the center of the penalty mark in mm
     #[prost(int32, optional, tag="12")]
-    pub goal_center_to_penalty_mark: ::core::option::Option<i32>,
+    pub goal_center_to_penalty_mark: Option<i32>,
     /// Goal height in mm
     #[prost(int32, optional, tag="13")]
-    pub goal_height: ::core::option::Option<i32>,
+    pub goal_height: Option<i32>,
     /// Ball radius in mm (note that this is a float type to represent sub-mm precision)
     #[prost(float, optional, tag="14")]
-    pub ball_radius: ::core::option::Option<f32>,
+    pub ball_radius: Option<f32>,
     /// Max allowed robot radius in mm (note that this is a float type to represent sub-mm precision)
     #[prost(float, optional, tag="15")]
-    pub max_robot_radius: ::core::option::Option<f32>,
+    pub max_robot_radius: Option<f32>,
     /// Width of the goal substitution area (distance from boundary walls that count as "inside the substitution area") in mm
     #[prost(int32, optional, tag="17")]
-    pub goal_substitution_area_width: ::core::option::Option<i32>,
+    pub goal_substitution_area_width: Option<i32>,
 }
 #[derive(Clone, Copy, PartialEq, ::prost::Message)]
 pub struct SslGeometryCameraCalibration {
@@ -2632,15 +2632,15 @@ pub struct SslGeometryCameraCalibration {
     #[prost(float, required, tag="12")]
     pub tz: f32,
     #[prost(float, optional, tag="13")]
-    pub derived_camera_world_tx: ::core::option::Option<f32>,
+    pub derived_camera_world_tx: Option<f32>,
     #[prost(float, optional, tag="14")]
-    pub derived_camera_world_ty: ::core::option::Option<f32>,
+    pub derived_camera_world_ty: Option<f32>,
     #[prost(float, optional, tag="15")]
-    pub derived_camera_world_tz: ::core::option::Option<f32>,
+    pub derived_camera_world_tz: Option<f32>,
     #[prost(uint32, optional, tag="16")]
-    pub pixel_image_width: ::core::option::Option<u32>,
+    pub pixel_image_width: Option<u32>,
     #[prost(uint32, optional, tag="17")]
-    pub pixel_image_height: ::core::option::Option<u32>,
+    pub pixel_image_height: Option<u32>,
 }
 /// Two-Phase model for straight-kicked balls.
 /// There are two phases with different accelerations during the ball kicks:
@@ -2677,20 +2677,20 @@ pub struct SslBallModelChipFixedLoss {
 #[derive(Clone, Copy, PartialEq, ::prost::Message)]
 pub struct SslGeometryModels {
     #[prost(message, optional, tag="1")]
-    pub straight_two_phase: ::core::option::Option<SslBallModelStraightTwoPhase>,
+    pub straight_two_phase: Option<SslBallModelStraightTwoPhase>,
     #[prost(message, optional, tag="2")]
-    pub chip_fixed_loss: ::core::option::Option<SslBallModelChipFixedLoss>,
+    pub chip_fixed_loss: Option<SslBallModelChipFixedLoss>,
 }
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct SslGeometryData {
     #[prost(message, required, tag="1")]
     pub field: SslGeometryFieldSize,
     #[prost(message, repeated, tag="2")]
-    pub calib: ::prost::alloc::vec::Vec<SslGeometryCameraCalibration>,
+    pub calib: Vec<SslGeometryCameraCalibration>,
     #[prost(message, optional, tag="3")]
-    pub models: ::core::option::Option<SslGeometryModels>,
+    pub models: Option<SslGeometryModels>,
 }
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, prost::Enumeration)]
 #[repr(i32)]
 pub enum SslFieldShapeType {
     Undefined = 0,
@@ -2732,7 +2732,7 @@ impl SslFieldShapeType {
         }
     }
     /// Creates an enum from field names used in the ProtoBuf definition.
-    pub fn from_str_name(value: &str) -> ::core::option::Option<Self> {
+    pub fn from_str_name(value: &str) -> Option<Self> {
         match value {
             "Undefined" => Some(Self::Undefined),
             "CenterCircle" => Some(Self::CenterCircle),
@@ -2760,12 +2760,12 @@ pub struct TrackedBall {
     pub pos: Vector3,
     /// The velocity \[m/s\] in the ssl-vision coordinate system
     #[prost(message, optional, tag="2")]
-    pub vel: ::core::option::Option<Vector3>,
+    pub vel: Option<Vector3>,
     /// The visibility of the ball
     /// A value between 0 (not visible) and 1 (visible)
     /// The exact implementation depends on the source software
     #[prost(float, optional, tag="3")]
-    pub visibility: ::core::option::Option<f32>,
+    pub visibility: Option<f32>,
 }
 /// A ball kicked by a robot, including predictions when the ball will come to a stop
 #[derive(Clone, Copy, PartialEq, ::prost::Message)]
@@ -2781,13 +2781,13 @@ pub struct KickedBall {
     pub start_timestamp: f64,
     /// The predicted unix timestamp \[s\] when the ball comes to a stop
     #[prost(double, optional, tag="4")]
-    pub stop_timestamp: ::core::option::Option<f64>,
+    pub stop_timestamp: Option<f64>,
     /// The predicted position \[m\] at which the ball will come to a stop
     #[prost(message, optional, tag="5")]
-    pub stop_pos: ::core::option::Option<Vector2>,
+    pub stop_pos: Option<Vector2>,
     /// The robot that kicked the ball
     #[prost(message, optional, tag="6")]
-    pub robot_id: ::core::option::Option<RobotId>,
+    pub robot_id: Option<RobotId>,
 }
 /// A single tracked robot
 #[derive(Clone, Copy, PartialEq, ::prost::Message)]
@@ -2802,15 +2802,15 @@ pub struct TrackedRobot {
     pub orientation: f32,
     /// The velocity \[m/s\] in the ssl-vision coordinate system
     #[prost(message, optional, tag="4")]
-    pub vel: ::core::option::Option<Vector2>,
+    pub vel: Option<Vector2>,
     /// The angular velocity \[rad/s\] in the ssl-vision coordinate system
     #[prost(float, optional, tag="5")]
-    pub vel_angular: ::core::option::Option<f32>,
+    pub vel_angular: Option<f32>,
     /// The visibility of the robot
     /// A value between 0 (not visible) and 1 (visible)
     /// The exact implementation depends on the source software
     #[prost(float, optional, tag="6")]
-    pub visibility: ::core::option::Option<f32>,
+    pub visibility: Option<f32>,
 }
 /// A frame that contains all currently tracked objects on the field on all cameras
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -2825,22 +2825,22 @@ pub struct TrackedFrame {
     /// The first ball is the primary one
     /// Sources may add additional balls based on their capabilities
     #[prost(message, repeated, tag="3")]
-    pub balls: ::prost::alloc::vec::Vec<TrackedBall>,
+    pub balls: Vec<TrackedBall>,
     /// The list of detected robots of both teams
     #[prost(message, repeated, tag="4")]
-    pub robots: ::prost::alloc::vec::Vec<TrackedRobot>,
+    pub robots: Vec<TrackedRobot>,
     /// Information about a kicked ball, if the ball was kicked by a robot and is still moving
     /// Note: This field is optional. Some source implementations might not set this at any time
     #[prost(message, optional, tag="5")]
-    pub kicked_ball: ::core::option::Option<KickedBall>,
+    pub kicked_ball: Option<KickedBall>,
     /// List of capabilities of the source implementation
     #[prost(enumeration="Capability", repeated, packed="false", tag="6")]
-    pub capabilities: ::prost::alloc::vec::Vec<i32>,
+    pub capabilities: Vec<i32>,
 }
 // Default network address: 224.5.23.2:10010
 
 /// The team color of the robot
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, prost::Enumeration)]
 #[repr(i32)]
 pub enum TeamColor {
     /// team not set
@@ -2863,7 +2863,7 @@ impl TeamColor {
         }
     }
     /// Creates an enum from field names used in the ProtoBuf definition.
-    pub fn from_str_name(value: &str) -> ::core::option::Option<Self> {
+    pub fn from_str_name(value: &str) -> Option<Self> {
         match value {
             "TEAM_COLOR_UNKNOWN" => Some(Self::Unknown),
             "TEAM_COLOR_YELLOW" => Some(Self::Yellow),
@@ -2873,7 +2873,7 @@ impl TeamColor {
     }
 }
 /// Capabilities that a source implementation can have
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, prost::Enumeration)]
 #[repr(i32)]
 pub enum Capability {
     Unknown = 0,
@@ -2895,7 +2895,7 @@ impl Capability {
         }
     }
     /// Creates an enum from field names used in the ProtoBuf definition.
-    pub fn from_str_name(value: &str) -> ::core::option::Option<Self> {
+    pub fn from_str_name(value: &str) -> Option<Self> {
         match value {
             "CAPABILITY_UNKNOWN" => Some(Self::Unknown),
             "CAPABILITY_DETECT_FLYING_BALLS" => Some(Self::DetectFlyingBalls),
@@ -2912,13 +2912,13 @@ pub struct TrackerWrapperPacket {
     /// A random UUID of the source that is kept constant at the source while running
     /// If multiple sources are broadcasting to the same network, this id can be used to identify individual sources
     #[prost(string, required, tag="1")]
-    pub uuid: ::prost::alloc::string::String,
+    pub uuid: String,
     /// The name of the source software that is producing this messages.
     #[prost(string, optional, tag="2")]
-    pub source_name: ::core::option::Option<::prost::alloc::string::String>,
+    pub source_name: Option<String>,
     /// The tracked frame
     #[prost(message, optional, tag="3")]
-    pub tracked_frame: ::core::option::Option<TrackedFrame>,
+    pub tracked_frame: Option<TrackedFrame>,
 }
 /// The AutoRefCiInput contains all packets/messages that would otherwise be received through multicast by the auto-referee
 /// It may contain either a raw or a tracked SSL-vision packet. If both are given, the implementation may choose either one.
@@ -2926,16 +2926,16 @@ pub struct TrackerWrapperPacket {
 pub struct AutoRefCiInput {
     /// Latest referee message
     #[prost(message, optional, tag="1")]
-    pub referee_message: ::core::option::Option<Referee>,
+    pub referee_message: Option<Referee>,
     /// A tracked SSL-Vision packet to be processed without filtering
     #[prost(message, optional, tag="2")]
-    pub tracker_wrapper_packet: ::core::option::Option<TrackerWrapperPacket>,
+    pub tracker_wrapper_packet: Option<TrackerWrapperPacket>,
     /// A list of unfiltered SSL-Vision packets (for multiple cameras) to be filtered and processed
     #[prost(message, repeated, tag="3")]
-    pub detection: ::prost::alloc::vec::Vec<SslDetectionFrame>,
+    pub detection: Vec<SslDetectionFrame>,
     /// Current geometry data, to be sent at least once at the beginning of the connection
     #[prost(message, optional, tag="4")]
-    pub geometry: ::core::option::Option<SslGeometryData>,
+    pub geometry: Option<SslGeometryData>,
 }
 /// The AutoRefCiOutput contains any new data created by the auto-referee for further processing
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -2944,30 +2944,30 @@ pub struct AutoRefCiOutput {
     /// The auto-referee will either generate it from the unfiltered SSL-Vision packets
     /// or simply return the tracked packet from the input.
     #[prost(message, optional, tag="1")]
-    pub tracker_wrapper_packet: ::core::option::Option<TrackerWrapperPacket>,
+    pub tracker_wrapper_packet: Option<TrackerWrapperPacket>,
 }
 /// The input format to the GC
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct CiInput {
     /// New unix timestamp in \[ns\] for the GC
     #[prost(int64, optional, tag="1")]
-    pub timestamp: ::core::option::Option<i64>,
+    pub timestamp: Option<i64>,
     /// New tracker packet with ball and robot data
     #[prost(message, optional, tag="2")]
-    pub tracker_packet: ::core::option::Option<TrackerWrapperPacket>,
+    pub tracker_packet: Option<TrackerWrapperPacket>,
     /// (UI) API input
     #[prost(message, repeated, tag="3")]
-    pub api_inputs: ::prost::alloc::vec::Vec<Input>,
+    pub api_inputs: Vec<Input>,
     /// Update geometry
     #[prost(message, optional, tag="4")]
-    pub geometry: ::core::option::Option<SslGeometryData>,
+    pub geometry: Option<SslGeometryData>,
 }
 /// The output format of the GC response
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct CiOutput {
     /// Latest referee message
     #[prost(message, optional, tag="1")]
-    pub referee_msg: ::core::option::Option<Referee>,
+    pub referee_msg: Option<Referee>,
 }
 #[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct CpBall {
@@ -2976,7 +2976,7 @@ pub struct CpBall {
     pub pos: CpVector2,
     /// The velocity \[mm/s\] in the ssl-vision coordinate system
     #[prost(message, optional, tag="2")]
-    pub vel: ::core::option::Option<CpVector2>,
+    pub vel: Option<CpVector2>,
 }
 /// From the tracked ssl vision packet, removed unnecessary fields
 /// A single tracked robot
@@ -2992,7 +2992,7 @@ pub struct CpTrackedRobot {
     pub orientation: i32,
     /// The velocity \[m/s\] in the ssl-vision coordinate system
     #[prost(message, optional, tag="4")]
-    pub vel: ::core::option::Option<CpVector2>,
+    pub vel: Option<CpVector2>,
 }
 #[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct CpVector2 {
@@ -3008,7 +3008,7 @@ pub struct CpRobot {
     #[prost(uint32, required, tag="1")]
     pub robot_id: u32,
     #[prost(message, required, tag="2")]
-    pub timestamp: ::prost_types::Timestamp,
+    pub timestamp: prost_types::Timestamp,
     #[prost(uint32, required, tag="3")]
     pub packet_id: u32,
     /// the ball data,
@@ -3016,9 +3016,9 @@ pub struct CpRobot {
     pub ball: CpBall,
     /// The robots, the robot can extract their own position easily, because you should now your own robot id.
     #[prost(message, repeated, tag="5")]
-    pub robots_yellow: ::prost::alloc::vec::Vec<CpTrackedRobot>,
+    pub robots_yellow: Vec<CpTrackedRobot>,
     #[prost(message, repeated, tag="6")]
-    pub robots_blue: ::prost::alloc::vec::Vec<CpTrackedRobot>,
+    pub robots_blue: Vec<CpTrackedRobot>,
     /// The actual command
     #[prost(message, required, tag="7")]
     pub cmd: CpCommand,
@@ -3031,17 +3031,17 @@ pub struct CpCommand {
     #[prost(enumeration="CpTask", required, tag="2")]
     pub task: i32,
     #[prost(message, optional, tag="3")]
-    pub pos: ::core::option::Option<CpVector2>,
+    pub pos: Option<CpVector2>,
     #[prost(uint32, optional, tag="4")]
-    pub speed: ::core::option::Option<u32>,
+    pub speed: Option<u32>,
     #[prost(uint32, optional, tag="5")]
-    pub orientation: ::core::option::Option<u32>,
+    pub orientation: Option<u32>,
     #[prost(uint32, optional, tag="6")]
-    pub kick_orient: ::core::option::Option<u32>,
+    pub kick_orient: Option<u32>,
     #[prost(uint32, optional, tag="7")]
-    pub kick_speed: ::core::option::Option<u32>,
+    pub kick_speed: Option<u32>,
 }
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, prost::Enumeration)]
 #[repr(i32)]
 pub enum CpState {
     StateUnspecified = 0,
@@ -3075,7 +3075,7 @@ impl CpState {
         }
     }
     /// Creates an enum from field names used in the ProtoBuf definition.
-    pub fn from_str_name(value: &str) -> ::core::option::Option<Self> {
+    pub fn from_str_name(value: &str) -> Option<Self> {
         match value {
             "STATE_UNSPECIFIED" => Some(Self::StateUnspecified),
             "STATE_HALT" => Some(Self::StateHalt),
@@ -3087,7 +3087,7 @@ impl CpState {
         }
     }
 }
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, prost::Enumeration)]
 #[repr(i32)]
 pub enum CpTask {
     TaskUnspecified = 0,
@@ -3131,7 +3131,7 @@ impl CpTask {
         }
     }
     /// Creates an enum from field names used in the ProtoBuf definition.
-    pub fn from_str_name(value: &str) -> ::core::option::Option<Self> {
+    pub fn from_str_name(value: &str) -> Option<Self> {
         match value {
             "TASK_UNSPECIFIED" => Some(Self::TaskUnspecified),
             "TASK_POS" => Some(Self::TaskPos),
@@ -3150,13 +3150,13 @@ impl CpTask {
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct SslWrapperPacket {
     #[prost(message, optional, tag="1")]
-    pub detection: ::core::option::Option<SslDetectionFrame>,
+    pub detection: Option<SslDetectionFrame>,
     #[prost(message, optional, tag="2")]
-    pub geometry: ::core::option::Option<SslGeometryData>,
+    pub geometry: Option<SslGeometryData>,
     #[prost(enumeration="SslSource", optional, tag="3")]
-    pub source: ::core::option::Option<i32>,
+    pub source: Option<i32>,
 }
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, prost::Enumeration)]
 #[repr(i32)]
 pub enum SslSource {
     Unknown = 0,
@@ -3182,7 +3182,7 @@ impl SslSource {
         }
     }
     /// Creates an enum from field names used in the ProtoBuf definition.
-    pub fn from_str_name(value: &str) -> ::core::option::Option<Self> {
+    pub fn from_str_name(value: &str) -> Option<Self> {
         match value {
             "SSL_SOURCE_UNKNOWN" => Some(Self::Unknown),
             "SSL_SOURCE_OTHER" => Some(Self::Other),
@@ -3198,19 +3198,19 @@ impl SslSource {
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct CpInterfaceWrapper {
     #[prost(message, optional, tag="1")]
-    pub vision_raw: ::core::option::Option<SslWrapperPacket>,
+    pub vision_raw: Option<SslWrapperPacket>,
     #[prost(message, optional, tag="2")]
-    pub vision_tracked: ::core::option::Option<TrackerWrapperPacket>,
+    pub vision_tracked: Option<TrackerWrapperPacket>,
     #[prost(message, optional, tag="3")]
-    pub gc_data: ::core::option::Option<Referee>,
+    pub gc_data: Option<Referee>,
     #[prost(message, repeated, tag="4")]
-    pub robot_commands: ::prost::alloc::vec::Vec<CpRobot>,
+    pub robot_commands: Vec<CpRobot>,
 }
 /// buf:lint:ignore MESSAGE_PASCAL_CASE
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct InterfaceWrapperCp {
     #[prost(message, repeated, tag="1")]
-    pub robot_commands: ::prost::alloc::vec::Vec<InterfaceRobotCommandsCp>,
+    pub robot_commands: Vec<InterfaceRobotCommandsCp>,
     #[prost(message, required, tag="2")]
     pub interface_command: InterfaceCommandCp,
 }
@@ -3245,40 +3245,40 @@ pub struct RobotCp {
     #[prost(uint32, required, tag="1")]
     pub robot_id: u32,
     #[prost(float, optional, tag="2")]
-    pub battery_voltage: ::core::option::Option<f32>,
+    pub battery_voltage: Option<f32>,
     #[prost(bool, required, tag="3")]
     pub kicker_ready: bool,
     #[prost(bool, required, tag="4")]
     pub has_ball: bool,
     #[prost(string, optional, tag="5")]
-    pub error_msg: ::core::option::Option<::prost::alloc::string::String>,
+    pub error_msg: Option<String>,
     #[prost(bool, optional, tag="6")]
-    pub acting: ::core::option::Option<bool>,
+    pub acting: Option<bool>,
     #[prost(uint32, optional, tag="7")]
-    pub last_rec_packet: ::core::option::Option<u32>,
+    pub last_rec_packet: Option<u32>,
 }
 /// a reply that is sent by the controller for each request from teams or autoRefs
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct ControllerReply {
     /// status_code is an optional code that indicates the result of the last request
     #[prost(enumeration="controller_reply::StatusCode", optional, tag="1")]
-    pub status_code: ::core::option::Option<i32>,
+    pub status_code: Option<i32>,
     /// reason is an optional explanation of the status code
     #[prost(string, optional, tag="2")]
-    pub reason: ::core::option::Option<::prost::alloc::string::String>,
+    pub reason: Option<String>,
     /// next_token must be send with the next request, if secure communication is used
     /// the token is used to avoid replay attacks
     /// the token is always present in the very first message before the registration starts
     /// the token is not present, if secure communication is not used
     #[prost(string, optional, tag="3")]
-    pub next_token: ::core::option::Option<::prost::alloc::string::String>,
+    pub next_token: Option<String>,
     /// verification indicates if the last request could be verified (secure communication)
     #[prost(enumeration="controller_reply::Verification", optional, tag="4")]
-    pub verification: ::core::option::Option<i32>,
+    pub verification: Option<i32>,
 }
 /// Nested message and enum types in `ControllerReply`.
 pub mod controller_reply {
-    #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
+    #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, prost::Enumeration)]
     #[repr(i32)]
     pub enum StatusCode {
         UnknownStatusCode = 0,
@@ -3298,7 +3298,7 @@ pub mod controller_reply {
             }
         }
         /// Creates an enum from field names used in the ProtoBuf definition.
-        pub fn from_str_name(value: &str) -> ::core::option::Option<Self> {
+        pub fn from_str_name(value: &str) -> Option<Self> {
             match value {
                 "UNKNOWN_STATUS_CODE" => Some(Self::UnknownStatusCode),
                 "OK" => Some(Self::Ok),
@@ -3307,7 +3307,7 @@ pub mod controller_reply {
             }
         }
     }
-    #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
+    #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, prost::Enumeration)]
     #[repr(i32)]
     pub enum Verification {
         UnknownVerification = 0,
@@ -3327,7 +3327,7 @@ pub mod controller_reply {
             }
         }
         /// Creates an enum from field names used in the ProtoBuf definition.
-        pub fn from_str_name(value: &str) -> ::core::option::Option<Self> {
+        pub fn from_str_name(value: &str) -> Option<Self> {
             match value {
                 "UNKNOWN_VERIFICATION" => Some(Self::UnknownVerification),
                 "VERIFIED" => Some(Self::Verified),
@@ -3342,40 +3342,40 @@ pub mod controller_reply {
 pub struct Signature {
     /// the token that was received with the last controller reply
     #[prost(string, required, tag="1")]
-    pub token: ::prost::alloc::string::String,
+    pub token: String,
     /// the PKCS1v15 signature of this message
     #[prost(bytes="vec", required, tag="2")]
-    pub pkcs1v15: ::prost::alloc::vec::Vec<u8>,
+    pub pkcs1v15: Vec<u8>,
 }
 /// AutoRefRegistration is the first message that a client must send to the controller to identify itself
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct AutoRefRegistration {
     /// identifier is a unique name of the client
     #[prost(string, required, tag="1")]
-    pub identifier: ::prost::alloc::string::String,
+    pub identifier: String,
     /// signature can optionally be specified to enable secure communication
     #[prost(message, optional, tag="2")]
-    pub signature: ::core::option::Option<Signature>,
+    pub signature: Option<Signature>,
 }
 /// AutoRefToController is the wrapper message for all subsequent messages from the autoRef to the controller
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct AutoRefToController {
     /// signature can optionally be specified to enable secure communication
     #[prost(message, optional, tag="1")]
-    pub signature: ::core::option::Option<Signature>,
+    pub signature: Option<Signature>,
     /// game_event is an optional event that the autoRef detected during the game
     #[prost(message, optional, tag="2")]
-    pub game_event: ::core::option::Option<GameEvent>,
+    pub game_event: Option<GameEvent>,
 }
 /// ControllerToAutoRef is the wrapper message for all messages from controller to autoRef
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct ControllerToAutoRef {
     #[prost(oneof="controller_to_auto_ref::Msg", tags="1")]
-    pub msg: ::core::option::Option<controller_to_auto_ref::Msg>,
+    pub msg: Option<controller_to_auto_ref::Msg>,
 }
 /// Nested message and enum types in `ControllerToAutoRef`.
 pub mod controller_to_auto_ref {
-    #[derive(Clone, PartialEq, Eq, Hash, ::prost::Oneof)]
+    #[derive(Clone, PartialEq, Eq, Hash, prost::Oneof)]
     pub enum Msg {
         /// a reply from the controller
         #[prost(message, tag="1")]
@@ -3390,20 +3390,20 @@ pub struct RemoteControlRegistration {
     pub team: i32,
     /// signature can optionally be specified to enable secure communication
     #[prost(message, optional, tag="2")]
-    pub signature: ::core::option::Option<Signature>,
+    pub signature: Option<Signature>,
 }
 /// wrapper for all messages from the remote control to the controller
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct RemoteControlToController {
     /// signature can optionally be specified to enable secure communication
     #[prost(message, optional, tag="1")]
-    pub signature: ::core::option::Option<Signature>,
+    pub signature: Option<Signature>,
     #[prost(oneof="remote_control_to_controller::Msg", tags="2, 3, 4, 5, 6")]
-    pub msg: ::core::option::Option<remote_control_to_controller::Msg>,
+    pub msg: Option<remote_control_to_controller::Msg>,
 }
 /// Nested message and enum types in `RemoteControlToController`.
 pub mod remote_control_to_controller {
-    #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
+    #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, prost::Enumeration)]
     #[repr(i32)]
     pub enum Request {
         Unknown = 0,
@@ -3431,7 +3431,7 @@ pub mod remote_control_to_controller {
             }
         }
         /// Creates an enum from field names used in the ProtoBuf definition.
-        pub fn from_str_name(value: &str) -> ::core::option::Option<Self> {
+        pub fn from_str_name(value: &str) -> Option<Self> {
             match value {
                 "UNKNOWN" => Some(Self::Unknown),
                 "PING" => Some(Self::Ping),
@@ -3442,7 +3442,7 @@ pub mod remote_control_to_controller {
             }
         }
     }
-    #[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Oneof)]
+    #[derive(Clone, Copy, PartialEq, Eq, Hash, prost::Oneof)]
     pub enum Msg {
         /// send a request to the GC
         #[prost(enumeration="Request", tag="2")]
@@ -3469,60 +3469,60 @@ pub mod remote_control_to_controller {
 pub struct ControllerToRemoteControl {
     /// a reply from the controller
     #[prost(message, optional, tag="1")]
-    pub controller_reply: ::core::option::Option<ControllerReply>,
+    pub controller_reply: Option<ControllerReply>,
     /// current team state
     #[prost(message, optional, tag="2")]
-    pub state: ::core::option::Option<RemoteControlTeamState>,
+    pub state: Option<RemoteControlTeamState>,
 }
 /// Current team state from Controller for remote control
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct RemoteControlTeamState {
     /// the team that is controlled
     #[prost(enumeration="Team", optional, tag="12")]
-    pub team: ::core::option::Option<i32>,
+    pub team: Option<i32>,
     /// list of all currently available request types that can be made
     #[prost(enumeration="RemoteControlRequestType", repeated, packed="false", tag="1")]
-    pub available_requests: ::prost::alloc::vec::Vec<i32>,
+    pub available_requests: Vec<i32>,
     /// list of all currently active request types that are pending
     #[prost(enumeration="RemoteControlRequestType", repeated, packed="false", tag="2")]
-    pub active_requests: ::prost::alloc::vec::Vec<i32>,
+    pub active_requests: Vec<i32>,
     /// currently set keeper id
     #[prost(int32, optional, tag="3")]
-    pub keeper_id: ::core::option::Option<i32>,
+    pub keeper_id: Option<i32>,
     /// number of seconds till emergency stop is executed
     /// zero, if no emergency stop requested
     #[prost(float, optional, tag="4")]
-    pub emergency_stop_in: ::core::option::Option<f32>,
+    pub emergency_stop_in: Option<f32>,
     /// number of timeouts left for the team
     #[prost(int32, optional, tag="5")]
-    pub timeouts_left: ::core::option::Option<i32>,
+    pub timeouts_left: Option<i32>,
     /// number of seconds left for timeout for the team
     #[prost(float, optional, tag="10")]
-    pub timeout_time_left: ::core::option::Option<f32>,
+    pub timeout_time_left: Option<f32>,
     /// number of challenge flags left for the team
     #[prost(int32, optional, tag="6")]
-    pub challenge_flags_left: ::core::option::Option<i32>,
+    pub challenge_flags_left: Option<i32>,
     /// max number of robots currently allowed
     #[prost(int32, optional, tag="7")]
-    pub max_robots: ::core::option::Option<i32>,
+    pub max_robots: Option<i32>,
     /// current number of robots visible on field
     #[prost(int32, optional, tag="9")]
-    pub robots_on_field: ::core::option::Option<i32>,
+    pub robots_on_field: Option<i32>,
     /// list of due times for each active yellow card (in seconds)
     #[prost(float, repeated, packed="false", tag="8")]
-    pub yellow_cards_due: ::prost::alloc::vec::Vec<f32>,
+    pub yellow_cards_due: Vec<f32>,
     /// if true, team is allowed to substitute robots
     #[prost(bool, optional, tag="11")]
-    pub can_substitute_robot: ::core::option::Option<bool>,
+    pub can_substitute_robot: Option<bool>,
     /// number of bot substitutions left by the team in this halftime
     #[prost(uint32, optional, tag="13")]
-    pub bot_substitutions_left: ::core::option::Option<u32>,
+    pub bot_substitutions_left: Option<u32>,
     /// number of seconds left for current bot substitution
     #[prost(float, optional, tag="14")]
-    pub bot_substitution_time_left: ::core::option::Option<f32>,
+    pub bot_substitution_time_left: Option<f32>,
 }
 /// All possible request types that the remote control can make
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, prost::Enumeration)]
 #[repr(i32)]
 pub enum RemoteControlRequestType {
     UnknownRequestType = 0,
@@ -3552,7 +3552,7 @@ impl RemoteControlRequestType {
         }
     }
     /// Creates an enum from field names used in the ProtoBuf definition.
-    pub fn from_str_name(value: &str) -> ::core::option::Option<Self> {
+    pub fn from_str_name(value: &str) -> Option<Self> {
         match value {
             "UNKNOWN_REQUEST_TYPE" => Some(Self::UnknownRequestType),
             "EMERGENCY_STOP" => Some(Self::EmergencyStop),
@@ -3571,26 +3571,26 @@ impl RemoteControlRequestType {
 pub struct TeamRegistration {
     /// the exact team name as published by the game-controller
     #[prost(string, required, tag="1")]
-    pub team_name: ::prost::alloc::string::String,
+    pub team_name: String,
     /// signature can optionally be specified to enable secure communication
     #[prost(message, optional, tag="2")]
-    pub signature: ::core::option::Option<Signature>,
+    pub signature: Option<Signature>,
     /// the team (relevant only if a team plays against itself)
     #[prost(enumeration="Team", optional, tag="3")]
-    pub team: ::core::option::Option<i32>,
+    pub team: Option<i32>,
 }
 /// wrapper for all messages from a team's computer to the controller
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct TeamToController {
     /// signature can optionally be specified to enable secure communication
     #[prost(message, optional, tag="1")]
-    pub signature: ::core::option::Option<Signature>,
+    pub signature: Option<Signature>,
     #[prost(oneof="team_to_controller::Msg", tags="2, 3, 4, 5")]
-    pub msg: ::core::option::Option<team_to_controller::Msg>,
+    pub msg: Option<team_to_controller::Msg>,
 }
 /// Nested message and enum types in `TeamToController`.
 pub mod team_to_controller {
-    #[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Oneof)]
+    #[derive(Clone, Copy, PartialEq, Eq, Hash, prost::Oneof)]
     pub enum Msg {
         /// request a new desired keeper id
         #[prost(int32, tag="2")]
@@ -3611,11 +3611,11 @@ pub mod team_to_controller {
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct ControllerToTeam {
     #[prost(oneof="controller_to_team::Msg", tags="1")]
-    pub msg: ::core::option::Option<controller_to_team::Msg>,
+    pub msg: Option<controller_to_team::Msg>,
 }
 /// Nested message and enum types in `ControllerToTeam`.
 pub mod controller_to_team {
-    #[derive(Clone, PartialEq, Eq, Hash, ::prost::Oneof)]
+    #[derive(Clone, PartialEq, Eq, Hash, prost::Oneof)]
     pub enum Msg {
         /// a reply from the controller
         #[prost(message, tag="1")]
@@ -3626,7 +3626,7 @@ pub mod controller_to_team {
 /// the choice is valid until another choice is received
 /// if the team disconnects, the choice is reset to its default (STOP)
 /// teams may either send their current choice continuously or only on change
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, prost::Enumeration)]
 #[repr(i32)]
 pub enum AdvantageChoice {
     /// stop the game
@@ -3646,7 +3646,7 @@ impl AdvantageChoice {
         }
     }
     /// Creates an enum from field names used in the ProtoBuf definition.
-    pub fn from_str_name(value: &str) -> ::core::option::Option<Self> {
+    pub fn from_str_name(value: &str) -> Option<Self> {
         match value {
             "STOP" => Some(Self::Stop),
             "CONTINUE" => Some(Self::Continue),
