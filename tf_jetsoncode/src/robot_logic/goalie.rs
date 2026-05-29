@@ -6,21 +6,22 @@ use crate::robot_logic::orca::{self, OrcaOptions};
 // How far the goalie should stay in front of the goal line when guarding.
 const GOAL_LINE_MARGIN_MM: f32 = 120.0;
 // Extra distance from the outer penalty-area edge when the ball is far away.
-const PENALTY_EDGE_MARGIN_MM: f32 = 110.0;
+const PENALTY_EDGE_MARGIN_MM: f32 = 0.0;
 // Distance in front of the goal line used as the interception lane.
 const INTERCEPT_LINE_MM: f32 = 220.0;
 // If we are inside this distance in the penalty area, stop using raw motion.
-const RAW_STOP_RADIUS_MM: f32 = 120.0;
+const RAW_STOP_RADIUS_MM: f32 = 40.0;
 // Maximum translational speed for raw goalie movement inside the penalty area.
-const RAW_MAX_SPEED_MM_S: f32 = 1_400.0;
+// ToDo: Needs to be higher
+const RAW_MAX_SPEED_MM_S: f32 = 2_000.0;
 // Maximum ORCA speed while approaching the penalty area.
 const ORCA_MAX_SPEED_MM_S: f32 = 1_200.0;
 // Prediction horizon used to detect a kick/shot that is likely to reach goal.
-const SHOT_LOOKAHEAD_S: f32 = 3.5;
+const SHOT_LOOKAHEAD_S: f32 = 4.0;
 // Allowed vertical miss tolerance when deciding that a ball is heading at goal.
 const SHOT_Y_MARGIN_MM: f32 = 220.0;
 // Keeps the goalie inside the goal opening instead of hugging the exact edge.
-const GUARD_Y_MARGIN_MM: f32 = 70.0;
+const GUARD_Y_MARGIN_MM: f32 = 20.0;
 
 #[inline]
 pub fn goalie(
@@ -139,7 +140,7 @@ fn raw_move_towards(msg: TeensySendMsg, self_pos: Vector2, ball_pos: Vector2, ta
     0
   } else {
     // Simple proportional speed scaling, capped for safe goalie motion.
-    (distance * 1.55).clamp(0.0, RAW_MAX_SPEED_MM_S).round() as u16
+    (distance * 2.0).clamp(60.0, RAW_MAX_SPEED_MM_S).round() as u16
   };
   // Keep looking at the ball while moving.
   msg.orient = angle_to_u16(sub(ball_pos, self_pos));

@@ -1,8 +1,9 @@
-use crate::communication::{communication_receiver, send_flags};
 use crate::communication::send_cp::send_cp;
+use crate::communication::{communication_receiver, send_flags};
 use crate::proto::RobotCp;
 use crate::robot_logic::command;
 use crate::robot_logic::goalie::goalie;
+use crate::robot_logic::helpers::distance_cpv;
 use std::time::Duration;
 use tracing::info;
 
@@ -20,9 +21,7 @@ const DEFAULT_DECEL_MM_S2: f32 = 3_800.0;
 #[tokio::main]
 async fn main() {
   // Start tracing
-  tracing_subscriber::fmt()
-    .with_ansi(true)
-    .init();
+  tracing_subscriber::fmt().with_ansi(true).init();
 
   // Get config
   let config = match config::load_or_create_config("config.toml") {
@@ -41,7 +40,7 @@ async fn main() {
 
   // Udp Socket to send data back to the CrashPilot
   let upd_socket =
-    match tokio::net::UdpSocket::bind(format!("0.0.0.0:{}", config.cp_config.port_outgoing+2))
+    match tokio::net::UdpSocket::bind(format!("0.0.0.0:{}", config.cp_config.port_outgoing + 2))
       .await
     {
       Ok(s) => s,
@@ -91,13 +90,13 @@ async fn main() {
         .robots_yellow
         .iter()
         .find(|r| r.robot_id == config.robot_id as u32)
-        .unwrap_or( &robot_self );
+        .unwrap_or(&robot_self);
     } else if config.robot_team.as_str() == "blue" {
       robot_self = *cp_data
         .robots_blue
         .iter()
         .find(|r| r.robot_id == config.robot_id as u32)
-        .unwrap_or( &robot_self );
+        .unwrap_or(&robot_self);
     } else {
       panic!("Unknown team: {}", config.robot_team);
     }
@@ -138,7 +137,15 @@ async fn main() {
       }
       3 => {
         // Free to listen to commands
-        robot_msg = command(&config, &cp_data, &vision_data, robot_msg, false, robot_self).await;
+        robot_msg = command(
+          &config,
+          &cp_data,
+          &vision_data,
+          robot_msg,
+          false,
+          robot_self,
+        )
+        .await;
 
         let mut orient = robot_self.orientation % 360;
         while orient.is_negative() {
@@ -146,21 +153,17 @@ async fn main() {
         }
         robot_msg.self_orient = orient as u16;
 
-        // Check if self_orient != cp_data.cmd.orientation, if so, gradually rotate the robot, dependent on the distance
-        // to the end position, if command == pos, if not, just rotate
-        if cp_data.cmd.task == 1 {
-          // Check if orientation matches
-          if orient != cp_data.cmd.orientation.unwrap_or_default() as i32 {
-            // Distance to point
-
-          }
-        } else {
-          robot_msg.orient = cp_data.cmd.orientation.unwrap_or_default() as u16;
-        }
+        robot_msg.orient = cp_data.cmd.orientation.unwrap_or_default() as u16;
       }
       4 => {
         // Goalie, move into penalty area and protect the goal
         robot_msg = goalie(&config, &cp_data, &robot_self, &vision_data, robot_msg);
+
+        let mut orient = robot_self.orientation % 360;
+        while orient.is_negative() {
+          orient += 360;
+        }
+        robot_msg.self_orient = orient as u16;
       }
       5 => {
         // Substitute
@@ -178,16 +181,17 @@ async fn main() {
     robot_msg.vel_x = robot_self.vel.unwrap_or_default().x as i16;
     robot_msg.vel_y = robot_self.vel.unwrap_or_default().y as i16;
 
-
     // Print data for testing
     info!("Direction: {:?}", robot_msg.dir);
     info!("Speed: {:?}", robot_msg.speed);
-    info!("Orientation: {:?}", robot_msg.orient);
+    info!(
+      "Orientation: {:?}:{:?}",
+      robot_msg.orient, cp_data.cmd.orientation
+    );
     info!("Self Dir: {:?}", robot_msg.self_orient);
 
     // Print Self velocity in mm/s
     //info!("Self Velocity: {:?}", ((robot_self.vel.unwrap_or_default().x*robot_self.vel.unwrap_or_default().x+robot_self.vel.unwrap_or_default().y*robot_self.vel.unwrap_or_default().y) as f32).sqrt());
-
 
     let buf = robot_msg.encode();
     tx.publish(buf).await;
