@@ -1,5 +1,5 @@
 use crate::communication::{EventShare, TeensyOut, TeensyRecMSG};
-use crate::{config, TEENSY_RECEIVE_MSG_SIZE, TEENSY_SEND_MSG_SIZE};
+use crate::{TEENSY_RECEIVE_MSG_SIZE, TEENSY_SEND_MSG_SIZE, config};
 use std::time::Duration;
 use tokio::time::sleep;
 use tracing::error;
@@ -52,7 +52,10 @@ pub async fn teensy_communication(cfg: &config::Config, tx: EventShare, rx: Teen
         continue;
       }
 
-      eprintln!("Teensy HID device connected (vid=0x{:04x}, pid=0x{:04x})", vid, pid);
+      eprintln!(
+        "Teensy HID device connected (vid=0x{:04x}, pid=0x{:04x})",
+        vid, pid
+      );
 
       // Run the read/write loop until we detect a fatal error (device removed).
       let mut buf = [0u8; 64];
@@ -100,7 +103,7 @@ pub async fn teensy_communication(cfg: &config::Config, tx: EventShare, rx: Teen
           // HID report 0 first byte reserved for report-id in many platforms.
           let mut packet = [0u8; 65];
           packet[0] = 0;
-          packet[1..(TEENSY_SEND_MSG_SIZE+1)].copy_from_slice(&payload);
+          packet[1..(TEENSY_SEND_MSG_SIZE + 1)].copy_from_slice(&payload);
 
           if let Err(e) = teensy.write(&packet) {
             eprintln!("Failed to write to Teensy HID device: {}", e);
@@ -114,7 +117,10 @@ pub async fn teensy_communication(cfg: &config::Config, tx: EventShare, rx: Teen
       } // end 'device_loop
 
       // If we've reached here, the device was dropped or had a fatal error.
-      error!("Teensy HID device disconnected, will attempt to reconnect in {} ms", backoff_ms);
+      error!(
+        "Teensy HID device disconnected, will attempt to reconnect in {} ms",
+        backoff_ms
+      );
 
       // Drop the device handle explicitly (it will happen when goes out of scope).
       // Wait backoff and then retry.

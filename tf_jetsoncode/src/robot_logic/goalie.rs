@@ -1,7 +1,10 @@
 use crate::communication::{TeensySendMsg, VisionMsg};
 use crate::config::Config;
-use crate::proto::{CpRobot, CpTrackedRobot, CpVector2, Vector2};
-use crate::robot_logic::helpers::{angle_to_u16, sub, vec2, vec2_from_cp};
+use crate::proto::{CpRobot, CpTrackedRobot, CpVector2};
+use crate::robot_logic::helpers::{
+  Vec2f, angle_to_u16, clamp_to_own_penalty, inside_own_penalty_area, lerp, norm, own_goal_side,
+  own_goal_x, sub, vec2f, vec2f_from_cp,
+};
 use crate::robot_logic::orca::{self, OrcaOptions};
 
 // How far the goalie should stay in front of the goal line when guarding.
@@ -29,9 +32,9 @@ pub fn goalie(
   cfg: &Config, cp_data: &CpRobot, robot_self: &CpTrackedRobot, _vision: &VisionMsg,
   mut msg: TeensySendMsg,
 ) -> TeensySendMsg {
-  let self_pos = vec2_from_cp(robot_self.pos);
-  let ball_pos = vec2_from_cp(cp_data.ball.pos);
-  let ball_vel = cp_data.ball.vel.map_or(vec2(0.0, 0.0), vec2_from_cp);
+  let self_pos = vec2f_from_cp(robot_self.pos);
+  let ball_pos = vec2f_from_cp(cp_data.ball.pos);
+  let ball_vel = cp_data.ball.vel.map_or(vec2f(0.0, 0.0), vec2f_from_cp);
 
   // Always face the ball globally, independent of the movement direction.
   msg.orient = angle_to_u16(sub(ball_pos, self_pos));
@@ -71,7 +74,7 @@ pub fn goalie(
 }
 
 #[inline]
-fn goalie_target(cfg: &Config, ball_pos: Vector2, ball_vel: Vector2) -> Vector2 {
+fn goalie_target(cfg: &Config, ball_pos: Vec2f, ball_vel: Vec2f) -> Vec2f {
   // Own goal is on x- or x+ depending on the robot_goal setting.
   let goal_x = own_goal_x(cfg);
   let goal_side = own_goal_side(cfg);
@@ -94,14 +97,17 @@ fn goalie_target(cfg: &Config, ball_pos: Vector2, ball_vel: Vector2) -> Vector2 
   // 0.0 near our goal, 1.0 near the far side of the field.
   let outward = ((ball_pos.x - goal_x).abs() / field_scale).clamp(0.0, 1.0);
 
-  vec2(
+  vec2f(
     lerp(goal_guard_x, outer_guard_x, outward),
-    ball_pos.y.clamp(-goal_half_width + GUARD_Y_MARGIN_MM, goal_half_width - GUARD_Y_MARGIN_MM),
+    ball_pos.y.clamp(
+      -goal_half_width + GUARD_Y_MARGIN_MM,
+      goal_half_width - GUARD_Y_MARGIN_MM,
+    ),
   )
 }
 
 #[inline]
-pub(crate) fn predict_intercept(cfg: &Config, ball_pos: Vector2, ball_vel: Vector2) -> Option<Vector2> {
+pub(crate) fn predict_intercept(cfg: &Config, ball_pos: Vec2f, ball_vel: Vec2f) -> Option<Vec2f> {
   let goal_x = own_goal_x(cfg);
   let goal_side = own_goal_side(cfg);
   // Positive values mean the ball is moving toward our goal line.
@@ -125,11 +131,13 @@ pub(crate) fn predict_intercept(cfg: &Config, ball_pos: Vector2, ball_vel: Vecto
   }
 
   // Place the goalie slightly in front of the expected impact point.
-  Some(vec2(goal_x - goal_side * INTERCEPT_LINE_MM, predicted_y))
+  Some(vec2f(goal_x - goal_side * INTERCEPT_LINE_MM, predicted_y))
 }
 
 #[inline]
-fn raw_move_towards(msg: TeensySendMsg, self_pos: Vector2, ball_pos: Vector2, target: Vector2) -> TeensySendMsg {
+fn raw_move_towards(
+  msg: TeensySendMsg, self_pos: Vec2f, ball_pos: Vec2f, target: Vec2f,
+) -> TeensySendMsg {
   let mut msg = msg;
   // Drive toward the chosen defensive target using raw field-global direction.
   let delta = sub(target, self_pos);
@@ -150,71 +158,24 @@ fn raw_move_towards(msg: TeensySendMsg, self_pos: Vector2, ball_pos: Vector2, ta
 }
 
 #[inline]
-fn clamp_to_own_penalty(cfg: &Config, point: Vector2) -> Vector2 {
-  let goal_x = own_goal_x(cfg);
-  let goal_side = own_goal_side(cfg);
-  // Clamp the target to the part of the penalty area we want the goalie to use.
-  let penalty_depth = cfg.field.penalty_area_height_mm().max(1.0);
-  let penalty_outer_x = goal_x - goal_side * penalty_depth;
-  let x_min = goal_x.min(penalty_outer_x);
-  let x_max = goal_x.max(penalty_outer_x);
-  let y_half = cfg.field.penalty_area_width_mm().max(1.0) * 0.5;
-
-  vec2(
-    point.x.clamp(x_min + 40.0, x_max - 40.0),
-    point.y.clamp(-y_half + 40.0, y_half - 40.0),
-  )
-}
-
-#[inline]
-fn inside_own_penalty_area(cfg: &Config, pos: Vector2) -> bool {
-  let goal_x = own_goal_x(cfg);
-  let goal_side = own_goal_side(cfg);
-  // Same penalty-area bounds used by the clamping logic above.
-  let penalty_depth = cfg.field.penalty_area_height_mm().max(1.0);
-  let penalty_outer_x = goal_x - goal_side * penalty_depth;
-  let x_min = goal_x.min(penalty_outer_x);
-  let x_max = goal_x.max(penalty_outer_x);
-  let y_half = cfg.field.penalty_area_width_mm().max(1.0) * 0.5;
-
-  pos.x >= x_min && pos.x <= x_max && pos.y >= -y_half && pos.y <= y_half
-}
-
-#[inline]
-fn own_goal_x(cfg: &Config) -> f32 {
-  let half_length = cfg.field.width_mm() * 0.5;
-  // robot_goal=true means we defend the x+ side; otherwise x-.
-  if cfg.robot_goal { half_length } else { -half_length }
-}
-
-#[inline]
-fn own_goal_side(cfg: &Config) -> f32 {
-  // Sign helper: +1 for x+, -1 for x-.
-  if cfg.robot_goal { 1.0 } else { -1.0 }
-}
-
-#[inline]
-fn cp_to_cp(v: Vector2) -> CpVector2 {
-  CpVector2 { x: v.x as i32, y: v.y as i32 }
-}
-
-#[inline]
-fn norm(v: Vector2) -> f32 {
-  v.x.hypot(v.y)
-}
-
-#[inline]
-fn lerp(a: f32, b: f32, t: f32) -> f32 {
-  a + (b - a) * t.clamp(0.0, 1.0)
+fn cp_to_cp(v: Vec2f) -> CpVector2 {
+  CpVector2 {
+    x: v.x as i32,
+    y: v.y as i32,
+  }
 }
 
 #[cfg(test)]
 mod tests {
-  use crate::robot_logic::helpers::angle_to_u16;
   use super::*;
+  use crate::proto::CpVector2;
+  use crate::robot_logic::helpers::{angle_to_u16, vec2f};
 
   fn sample_cfg(robot_goal: bool) -> Config {
-    Config { robot_goal, ..Config::default() }
+    Config {
+      robot_goal,
+      ..Config::default()
+    }
   }
 
   fn sample_robot(x: i32, y: i32) -> CpTrackedRobot {
@@ -232,8 +193,14 @@ mod tests {
       timestamp: Default::default(),
       packet_id: 1,
       ball: crate::proto::CpBall {
-        pos: CpVector2 { x: ball_x, y: ball_y },
-        vel: Some(CpVector2 { x: ball_vx, y: ball_vy }),
+        pos: CpVector2 {
+          x: ball_x,
+          y: ball_y,
+        },
+        vel: Some(CpVector2 {
+          x: ball_vx,
+          y: ball_vy,
+        }),
       },
       robots_yellow: vec![],
       robots_blue: vec![],
@@ -244,15 +211,15 @@ mod tests {
   #[test]
   fn ball_further_out_moves_goalie_further_out() {
     let cfg = sample_cfg(false);
-    let near = goalie_target(&cfg, vec2(-4_200.0, 0.0), vec2(0.0, 0.0));
-    let far = goalie_target(&cfg, vec2(0.0, 0.0), vec2(0.0, 0.0));
+    let near = goalie_target(&cfg, vec2f(-4_200.0, 0.0), vec2f(0.0, 0.0));
+    let far = goalie_target(&cfg, vec2f(0.0, 0.0), vec2f(0.0, 0.0));
     assert!(far.x > near.x);
   }
 
   #[test]
   fn predicts_kick_towards_goal() {
     let cfg = sample_cfg(false);
-    let intercept = predict_intercept(&cfg, vec2(-1_500.0, 120.0), vec2(-1_300.0, 50.0)).unwrap();
+    let intercept = predict_intercept(&cfg, vec2f(-1_500.0, 120.0), vec2f(-1_300.0, 50.0)).unwrap();
     assert!(intercept.x < -4_000.0);
     assert!(intercept.y > 0.0);
   }
@@ -260,16 +227,16 @@ mod tests {
   #[test]
   fn uses_raw_inside_penalty_area() {
     let cfg = sample_cfg(false);
-    assert!(inside_own_penalty_area(&cfg, vec2(-4_300.0, 0.0)));
-    assert!(!inside_own_penalty_area(&cfg, vec2(-3_000.0, 0.0)));
+    assert!(inside_own_penalty_area(&cfg, vec2f(-4_300.0, 0.0)));
+    assert!(!inside_own_penalty_area(&cfg, vec2f(-3_000.0, 0.0)));
   }
 
   #[test]
   fn faces_ball_using_global_coordinates() {
-    let self_pos = vec2(0.0, 0.0);
-    assert_eq!(angle_to_u16(sub(vec2(1_000.0, 0.0), self_pos)), 0);
-    assert_eq!(angle_to_u16(sub(vec2(0.0, 1_000.0), self_pos)), 90);
-    assert_eq!(angle_to_u16(sub(vec2(-1_000.0, 0.0), self_pos)), 180);
+    let self_pos = vec2f(0.0, 0.0);
+    assert_eq!(angle_to_u16(sub(vec2f(1_000.0, 0.0), self_pos)), 0);
+    assert_eq!(angle_to_u16(sub(vec2f(0.0, 1_000.0), self_pos)), 90);
+    assert_eq!(angle_to_u16(sub(vec2f(-1_000.0, 0.0), self_pos)), 180);
   }
 
   #[test]
@@ -278,9 +245,14 @@ mod tests {
     let robot = sample_robot(-4_300, 0);
     let cp = sample_cp(-1_500, 120, -1_300, 50);
 
-    let msg = goalie(&cfg, &cp, &robot, &VisionMsg::default(), TeensySendMsg::default());
+    let msg = goalie(
+      &cfg,
+      &cp,
+      &robot,
+      &VisionMsg::default(),
+      TeensySendMsg::default(),
+    );
     assert!(msg.speed > 0);
     assert_ne!(msg.dir, 0);
   }
 }
-

@@ -1,15 +1,17 @@
 use crate::communication::{TeensySendMsg, VisionMsg};
 use crate::config::Config;
-use crate::proto::{CpRobot, CpTrackedRobot, Vector2f};
-use crate::robot_logic::helpers::{calculate_vector_2i, distance_cpv};
+use crate::proto::{CpRobot, CpTrackedRobot};
+use crate::robot_logic::helpers::{
+  Vec2f, angle_to_u16, calculate_vector_2i, cp_to_vec2f, distance_cpv, sub,
+};
 use crate::robot_logic::orca::{self, OrcaOptions};
 use std::f32::consts::PI;
 
 /// Function drives near the ball with orca and then tries to get the ball using Junior code
 #[inline]
 pub async fn get_ball(
-  cfg: &Config, cp_data: &CpRobot, _vision_data: &VisionMsg,
-  mut msg: TeensySendMsg, robot_self: CpTrackedRobot,
+  cfg: &Config, cp_data: &CpRobot, _vision_data: &VisionMsg, mut msg: TeensySendMsg,
+  robot_self: CpTrackedRobot,
 ) -> TeensySendMsg {
   let dist = distance_cpv(robot_self.pos, cp_data.ball.pos);
   println!("Distance to ball: {:?}", dist);
@@ -34,7 +36,7 @@ pub async fn get_ball(
     let to_ball = calculate_vector_2i(robot_self.pos, cp_data.ball.pos);
 
     // Transformation vector with respected input angle
-    let trans_vector = Vector2f {
+    let trans_vector = Vec2f {
       x: -to_ball.x as f32 * f32::sin((cp_data.cmd.orientation() as f32).to_radians())
         + to_ball.y as f32 * f32::cos((cp_data.cmd.orientation() as f32).to_radians()),
       y: -to_ball.x as f32 * f32::cos((cp_data.cmd.orientation() as f32).to_radians())
@@ -157,8 +159,12 @@ fn compute_vector_angle(x_c: f32, y_c: f32, r: f32, x: f32, y: f32) -> f32 {
   angle
 }
 
-pub fn receive_ball(cp_data: &CpRobot, robot_self: CpTrackedRobot, vision: &VisionMsg, msg: TeensySendMsg) -> TeensySendMsg {
-  
+pub fn receive_ball(
+  cp_data: &CpRobot, robot_self: CpTrackedRobot, _vision: &VisionMsg, mut msg: TeensySendMsg,
+) -> TeensySendMsg {
+  let self_pos = cp_to_vec2f(robot_self.pos);
+  let ball_pos = cp_to_vec2f(cp_data.ball.pos);
+
   msg.orient = angle_to_u16(sub(ball_pos, self_pos));
   msg
 }

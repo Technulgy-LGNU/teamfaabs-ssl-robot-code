@@ -1,6 +1,6 @@
+use serde::{Deserialize, Serialize};
 use std::error::Error;
 use std::fs;
-use serde::{Deserialize, Serialize};
 use std::net::Ipv4Addr;
 use std::path::Path;
 
@@ -29,8 +29,6 @@ impl Default for Config {
     }
   }
 }
-
-
 
 #[derive(Debug, Deserialize, Serialize)]
 pub struct CrashPilotConfig {
@@ -119,7 +117,7 @@ impl FieldConfig {
   }
 }
 
-pub fn load_or_create_config(path: &str, ) -> Result<Config, Box<dyn Error>> {
+pub fn load_or_create_config(path: &str) -> Result<Config, Box<dyn Error>> {
   if !Path::new(path).exists() {
     let default_config = Config::default();
 
@@ -134,4 +132,3 @@ pub fn load_or_create_config(path: &str, ) -> Result<Config, Box<dyn Error>> {
 
   Ok(config)
 }
-

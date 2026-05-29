@@ -1,8 +1,8 @@
 use crate::communication::receive_cp::receive_cp;
 use crate::communication::receive_onboard_vision::receive_onboard_vision;
 use crate::communication::teensy_communication::teensy_communication;
-use crate::{config, TEENSY_SEND_MSG_SIZE};
 use crate::proto::CpRobot;
+use crate::{TEENSY_SEND_MSG_SIZE, config};
 use std::sync::Arc;
 use tokio::sync::{Mutex, Notify};
 
@@ -133,21 +133,18 @@ impl TeensySendMsg {
   }
 }
 pub mod send_flags {
-  pub const ERROR: u16    = 1 << 0;
-  pub const KICK: u16     = 1 << 1;
-  pub const CHIP: u16     = 1 << 2;
+  pub const ERROR: u16 = 1 << 0;
+  pub const KICK: u16 = 1 << 1;
+  pub const CHIP: u16 = 1 << 2;
   pub const DRIBBLER: u16 = 1 << 3;
   // 8–15 reserved for LEDs etc.
 }
-
 
 #[derive(Default)]
 struct TeensyLastState {
   seq: u64,
   payload: Option<[u8; TEENSY_SEND_MSG_SIZE]>,
 }
-
-
 
 /// Outbound Teensy handle (RobotCode -> Teensy).
 ///
