@@ -1,7 +1,8 @@
 use crate::communication::{TeensySendMsg, VisionMsg, send_flags};
 use crate::config;
 use crate::proto::{CpRobot, CpTrackedRobot};
-use crate::robot_logic::ball_logic::get_ball;
+use crate::robot_logic::ball_logic::{get_ball, receive_ball};
+use crate::robot_logic::goalie::goalie;
 use crate::robot_logic::helpers::distance_cpv;
 use crate::robot_logic::orca::OrcaOptions;
 use tracing::info;
@@ -78,7 +79,7 @@ pub async fn command(
     }
     4 => {
       // Rec Kick
-      msg.orient = cp_data.cmd.kick_orient.unwrap_or_default() as u16;
+      msg = receive_ball(cp_data, robot_self, vision_data, msg);
     }
     5 => {
       // Steal Ball

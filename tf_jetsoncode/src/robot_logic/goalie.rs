@@ -1,6 +1,7 @@
 use crate::communication::{TeensySendMsg, VisionMsg};
 use crate::config::Config;
 use crate::proto::{CpRobot, CpTrackedRobot, CpVector2, Vector2};
+use crate::robot_logic::helpers::{angle_to_u16, sub, vec2, vec2_from_cp};
 use crate::robot_logic::orca::{self, OrcaOptions};
 
 // How far the goalie should stay in front of the goal line when guarding.
@@ -81,7 +82,7 @@ fn goalie_target(cfg: &Config, ball_pos: Vector2, ball_vel: Vector2) -> Vector2 
   let penalty_outer_x = goal_x - goal_side * penalty_depth;
 
   // If the ball is moving toward goal fast enough, try to intercept it.
-  if let Some(intercept) = predicted_intercept(cfg, ball_pos, ball_vel) {
+  if let Some(intercept) = predict_intercept(cfg, ball_pos, ball_vel) {
     return clamp_to_own_penalty(cfg, intercept);
   }
 
@@ -100,7 +101,7 @@ fn goalie_target(cfg: &Config, ball_pos: Vector2, ball_vel: Vector2) -> Vector2 
 }
 
 #[inline]
-fn predicted_intercept(cfg: &Config, ball_pos: Vector2, ball_vel: Vector2) -> Option<Vector2> {
+pub(crate) fn predict_intercept(cfg: &Config, ball_pos: Vector2, ball_vel: Vector2) -> Option<Vector2> {
   let goal_x = own_goal_x(cfg);
   let goal_side = own_goal_side(cfg);
   // Positive values mean the ball is moving toward our goal line.
@@ -183,37 +184,18 @@ fn inside_own_penalty_area(cfg: &Config, pos: Vector2) -> bool {
 fn own_goal_x(cfg: &Config) -> f32 {
   let half_length = cfg.field.width_mm() * 0.5;
   // robot_goal=true means we defend the x+ side; otherwise x-.
-  if cfg.robot_goal {
-    -half_length
-  } else {
-    half_length
-  }
+  if cfg.robot_goal { half_length } else { -half_length }
 }
 
 #[inline]
 fn own_goal_side(cfg: &Config) -> f32 {
   // Sign helper: +1 for x+, -1 for x-.
-  if cfg.robot_goal { -1.0 } else { 1.0 }
+  if cfg.robot_goal { 1.0 } else { -1.0 }
 }
 
 #[inline]
 fn cp_to_cp(v: Vector2) -> CpVector2 {
   CpVector2 { x: v.x as i32, y: v.y as i32 }
-}
-
-#[inline]
-fn vec2_from_cp(v: CpVector2) -> Vector2 {
-  vec2(v.x as f32, v.y as f32)
-}
-
-#[inline]
-fn vec2(x: f32, y: f32) -> Vector2 {
-  Vector2 { x, y }
-}
-
-#[inline]
-fn sub(a: Vector2, b: Vector2) -> Vector2 {
-  vec2(a.x - b.x, a.y - b.y)
 }
 
 #[inline]
@@ -226,20 +208,9 @@ fn lerp(a: f32, b: f32, t: f32) -> f32 {
   a + (b - a) * t.clamp(0.0, 1.0)
 }
 
-#[inline]
-fn angle_to_u16(v: Vector2) -> u16 {
-  let mut deg = v.y.atan2(v.x).to_degrees();
-  while deg < 0.0 {
-    deg += 360.0;
-  }
-  while deg >= 360.0 {
-    deg -= 360.0;
-  }
-  deg.round().clamp(0.0, 359.0) as u16
-}
-
 #[cfg(test)]
 mod tests {
+  use crate::robot_logic::helpers::angle_to_u16;
   use super::*;
 
   fn sample_cfg(robot_goal: bool) -> Config {
@@ -281,7 +252,7 @@ mod tests {
   #[test]
   fn predicts_kick_towards_goal() {
     let cfg = sample_cfg(false);
-    let intercept = predicted_intercept(&cfg, vec2(-1_500.0, 120.0), vec2(-1_300.0, 50.0)).unwrap();
+    let intercept = predict_intercept(&cfg, vec2(-1_500.0, 120.0), vec2(-1_300.0, 50.0)).unwrap();
     assert!(intercept.x < -4_000.0);
     assert!(intercept.y > 0.0);
   }

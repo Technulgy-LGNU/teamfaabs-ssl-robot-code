@@ -156,3 +156,9 @@ fn compute_vector_angle(x_c: f32, y_c: f32, r: f32, x: f32, y: f32) -> f32 {
 
   angle
 }
+
+pub fn receive_ball(cp_data: &CpRobot, robot_self: CpTrackedRobot, vision: &VisionMsg, msg: TeensySendMsg) -> TeensySendMsg {
+  
+  msg.orient = angle_to_u16(sub(ball_pos, self_pos));
+  msg
+}
