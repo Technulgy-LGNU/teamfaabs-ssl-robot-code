@@ -31,7 +31,7 @@ pub async fn command(
       };
 
       // Check if near of pos, and then stop
-      if distance_cpv(robot_self.pos, cp_data.cmd.pos.unwrap_or_default()) < 200.0 {
+      if distance_cpv(robot_self.pos, cp_data.cmd.pos.unwrap_or_default()) < 10.0 {
         msg.speed = 0;
       } else {
         let plan = orca::drive_to_target(
@@ -47,12 +47,15 @@ pub async fn command(
         );
         msg = orca::orca_to_teensy(msg, &plan, robot_self);
       }
+
+      msg.orient = cp_data.cmd.orientation.unwrap_or_default() as u16;
     }
     2 => {
       // Kick in kick dir
 
       // First rotate robot
-      if (robot_self.orientation - cp_data.cmd.kick_orient.unwrap_or_default() as i32).abs() < 2 {
+      // ToDo: Make more precise, when encoders arrive
+      if (robot_self.orientation - cp_data.cmd.kick_orient.unwrap_or_default() as i32).abs() > 30 {
         // If we are facing the right direction (variance of two degrees)
         msg.orient = cp_data.cmd.kick_orient.unwrap_or_default() as u16;
       } else {
@@ -64,7 +67,8 @@ pub async fn command(
       // Chip in kick dir
 
       // First rotate robot
-      if (robot_self.orientation - cp_data.cmd.kick_orient.unwrap_or_default() as i32).abs() < 2 {
+      // ToDo: Make more precise, when encoders arrive
+      if (robot_self.orientation - cp_data.cmd.kick_orient.unwrap_or_default() as i32).abs() > 30 {
         // If we are facing the right direction (variance of two degrees)
         msg.orient = cp_data.cmd.kick_orient.unwrap_or_default() as u16;
       } else {
@@ -74,6 +78,7 @@ pub async fn command(
     }
     4 => {
       // Rec Kick
+      msg.orient = cp_data.cmd.kick_orient.unwrap_or_default() as u16;
     }
     5 => {
       // Steal Ball

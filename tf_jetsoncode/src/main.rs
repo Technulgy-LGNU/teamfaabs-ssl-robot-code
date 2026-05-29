@@ -113,6 +113,12 @@ async fn main() {
     info!("Incoming CP_Data: {:?}", cp_data);
     info!("\x1b[32m=================\x1b[0m");
 
+    let mut orient = robot_self.orientation % 360;
+    while orient.is_negative() {
+      orient += 360;
+    }
+    robot_self.orientation = orient;
+    robot_msg.self_orient = robot_self.orientation as u16;
     // Game Logic
     match cp_data.cmd.state {
       0 => {
@@ -128,14 +134,12 @@ async fn main() {
         // 1,5m/s (1500mm/s) & stay away from ball 500mm
         robot_msg = command(&config, &cp_data, &vision_data, robot_msg, true, robot_self).await;
 
-        let mut orient = robot_self.orientation % 360;
-        while orient.is_negative() {
-          orient += 360;
-        }
         robot_msg.self_orient = orient as u16;
         robot_msg.orient = cp_data.cmd.orientation.unwrap_or_default() as u16;
       }
       3 => {
+        // Clear Flags
+        robot_msg.clear_all_flags();
         // Free to listen to commands
         robot_msg = command(
           &config,
@@ -146,24 +150,10 @@ async fn main() {
           robot_self,
         )
         .await;
-
-        let mut orient = robot_self.orientation % 360;
-        while orient.is_negative() {
-          orient += 360;
-        }
-        robot_msg.self_orient = orient as u16;
-
-        robot_msg.orient = cp_data.cmd.orientation.unwrap_or_default() as u16;
       }
       4 => {
         // Goalie, move into penalty area and protect the goal
         robot_msg = goalie(&config, &cp_data, &robot_self, &vision_data, robot_msg);
-
-        let mut orient = robot_self.orientation % 360;
-        while orient.is_negative() {
-          orient += 360;
-        }
-        robot_msg.self_orient = orient as u16;
       }
       5 => {
         // Substitute
