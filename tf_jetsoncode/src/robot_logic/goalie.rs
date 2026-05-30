@@ -1,10 +1,7 @@
 use crate::communication::{TeensySendMsg, VisionMsg};
 use crate::config::Config;
 use crate::proto::{CpRobot, CpTrackedRobot, CpVector2};
-use crate::robot_logic::helpers::{
-  Vec2f, angle_to_u16, clamp_to_own_penalty, inside_own_penalty_area, lerp, norm, own_goal_side,
-  own_goal_x, sub, vec2f, vec2f_from_cp,
-};
+use crate::robot_logic::helpers::{Vec2f, angle_to_u16, clamp_to_own_penalty, inside_own_penalty_area, lerp, own_goal_side, own_goal_x, sub, vec2f, vec2f_from_cp, raw_move_towards, RAW_STOP_RADIUS_MM};
 use crate::robot_logic::orca::{self, OrcaOptions};
 
 // How far the goalie should stay in front of the goal line when guarding.
@@ -13,11 +10,6 @@ const GOAL_LINE_MARGIN_MM: f32 = 120.0;
 const PENALTY_EDGE_MARGIN_MM: f32 = 0.0;
 // Distance in front of the goal line used as the interception lane.
 const INTERCEPT_LINE_MM: f32 = 220.0;
-// If we are inside this distance in the penalty area, stop using raw motion.
-const RAW_STOP_RADIUS_MM: f32 = 40.0;
-// Maximum translational speed for raw goalie movement inside the penalty area.
-// ToDo: Needs to be higher
-const RAW_MAX_SPEED_MM_S: f32 = 2_000.0;
 // Maximum ORCA speed while approaching the penalty area.
 const ORCA_MAX_SPEED_MM_S: f32 = 1_200.0;
 // Prediction horizon used to detect a kick/shot that is likely to reach goal.
@@ -132,29 +124,6 @@ pub(crate) fn predict_intercept(cfg: &Config, ball_pos: Vec2f, ball_vel: Vec2f) 
 
   // Place the goalie slightly in front of the expected impact point.
   Some(vec2f(goal_x - goal_side * INTERCEPT_LINE_MM, predicted_y))
-}
-
-#[inline]
-fn raw_move_towards(
-  msg: TeensySendMsg, self_pos: Vec2f, ball_pos: Vec2f, target: Vec2f,
-) -> TeensySendMsg {
-  let mut msg = msg;
-  // Drive toward the chosen defensive target using raw field-global direction.
-  let delta = sub(target, self_pos);
-  let distance = norm(delta);
-
-  // Movement direction is global, not relative to robot heading.
-  msg.dir = angle_to_u16(delta);
-  msg.speed = if distance <= RAW_STOP_RADIUS_MM {
-    0
-  } else {
-    // Simple proportional speed scaling, capped for safe goalie motion.
-    (distance * 2.0).clamp(60.0, RAW_MAX_SPEED_MM_S).round() as u16
-  };
-  // Keep looking at the ball while moving.
-  msg.orient = angle_to_u16(sub(ball_pos, self_pos));
-
-  msg
 }
 
 #[inline]

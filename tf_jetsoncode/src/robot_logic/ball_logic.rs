@@ -1,9 +1,7 @@
 use crate::communication::{TeensySendMsg, VisionMsg};
 use crate::config::Config;
 use crate::proto::{CpRobot, CpTrackedRobot};
-use crate::robot_logic::helpers::{
-  Vec2f, angle_to_u16, calculate_vector_2i, cp_to_vec2f, distance_cpv, sub,
-};
+use crate::robot_logic::helpers::{calculate_vector_2i, cp_to_vec2f, distance_cpv, raw_move_towards, vec2f_length, Circle, Ray, Vec2f};
 use crate::robot_logic::orca::{self, OrcaOptions};
 use std::f32::consts::PI;
 
@@ -164,7 +162,63 @@ pub fn receive_ball(
 ) -> TeensySendMsg {
   let self_pos = cp_to_vec2f(robot_self.pos);
   let ball_pos = cp_to_vec2f(cp_data.ball.pos);
+  let ball_vel = cp_to_vec2f(cp_data.ball.vel.unwrap_or_default());
 
-  msg.orient = angle_to_u16(sub(ball_pos, self_pos));
+  let circle_ball_predict = Circle {
+    center: ball_pos,
+    radius: vec2f_length(ball_vel) * 1.0 + 15f32,
+  };
+
+  let ray_ball = Ray {
+    origin: ball_pos,
+    direction: ball_vel,
+  };
+  let intersection_point = match ray_circle_exit(ray_ball, circle_ball_predict) {
+    Some(intersection_point) => {intersection_point}
+    None => {
+      self_pos
+    }
+  };
+
+
+  msg = raw_move_towards(msg, self_pos, ball_pos, intersection_point);
+
   msg
 }
+
+/// Returns the point where the ray exits the circle.
+/// Returns `None` if the direction vector is zero-length.
+/// Panics in debug mode if the ray origin is outside the circle.
+#[inline]
+pub fn ray_circle_exit(ray: Ray, circle: Circle) -> Option<Vec2f> {
+  debug_assert!(
+    (ray.origin.x - circle.center.x).powi(2) + (ray.origin.y - circle.center.y).powi(2)
+      <= circle.radius * circle.radius + 1e-6,
+    "ray origin must be inside the circle"
+  );
+
+  let dir = {
+    let len = (ray.direction.x * ray.direction.x + ray.direction.y * ray.direction.y).sqrt();
+    if len == 0.0 { return None; }
+    Vec2f { x: ray.direction.x / len, y: ray.direction.y / len }
+  };
+
+  let oc = Vec2f {
+    x: ray.origin.x - circle.center.x,
+    y: ray.origin.y - circle.center.y,
+  };
+
+  let b = dir.x * oc.x + dir.y * oc.y;
+  let c = oc.x * oc.x + oc.y * oc.y - circle.radius * circle.radius;
+
+  // Origin is inside the circle so discriminant is always >= 0,
+  // and exactly one of the two t values is positive.
+  let discriminant = b * b - c;
+  let t = -b + discriminant.max(0.0).sqrt();
+
+  Some(Vec2f {
+    x: ray.origin.x + dir.x * t,
+    y: ray.origin.y + dir.y * t,
+  })
+}
+

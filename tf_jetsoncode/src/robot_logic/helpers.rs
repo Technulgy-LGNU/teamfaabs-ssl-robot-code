@@ -1,5 +1,14 @@
+use crate::communication::TeensySendMsg;
 use crate::config;
 use crate::proto::CpVector2;
+
+// If we are inside this distance in the penalty area, stop using raw motion.
+pub(crate) const RAW_STOP_RADIUS_MM: f32 = 40.0;
+// Maximum translational speed for raw goalie movement inside the penalty area.
+// ToDo: Needs to be higher
+pub(crate) const RAW_MAX_SPEED_MM_S: f32 = 2_000.0;
+// Look ahead time - used for receiving the ball
+pub(crate) const LOOK_AHEAD_TIME: f32 = 2.0;
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct Vec2i {
@@ -48,6 +57,11 @@ pub fn cp_vec2i_length(v: CpVector2) -> f32 {
   let x = v.x as f32;
   let y = v.y as f32;
   (x * x + y * y).sqrt()
+}
+
+#[inline]
+pub(crate) fn vec2f_length(v: Vec2f) -> f32 {
+  (v.x * v.x + v.y * v.y).sqrt()
 }
 
 #[inline]
@@ -116,6 +130,31 @@ pub(crate) fn cp_to_cp(v: Vec2f) -> CpVector2 {
 #[inline]
 pub(crate) fn vec2f_from_cp(v: CpVector2) -> Vec2f {
   vec2f(v.x as f32, v.y as f32)
+}
+
+
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct Circle {
+  pub center: Vec2f,
+  pub radius: f32,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct Ray {
+  pub origin: Vec2f,
+  /// Does not need to be normalized — the function handles that.
+  pub direction: Vec2f,
+}
+
+/// All intersection points a ray has with a circle.
+#[derive(Debug, PartialEq)]
+pub(crate) enum RayCircleIntersection {
+  /// The ray misses the circle entirely.
+  None,
+  /// The ray is tangent to the circle (one touch point).
+  Tangent(Vec2f),
+  /// The ray crosses the circle (two points, ordered nearest-first).
+  TwoPoints(Vec2f, Vec2f),
 }
 
 #[inline]
@@ -196,4 +235,27 @@ pub(crate) fn clamp_to_own_penalty(cfg: &config::Config, point: Vec2f) -> Vec2f 
     point.x.clamp(x_min + 40.0, x_max - 40.0),
     point.y.clamp(-y_half + 40.0, y_half - 40.0),
   )
+}
+
+#[inline]
+pub(crate) fn raw_move_towards(
+  msg: TeensySendMsg, self_pos: Vec2f, ball_pos: Vec2f, target: Vec2f,
+) -> TeensySendMsg {
+  let mut msg = msg;
+  // Drive toward the chosen defensive target using raw field-global direction.
+  let delta = sub(target, self_pos);
+  let distance = norm(delta);
+
+  // Movement direction is global, not relative to robot heading.
+  msg.dir = angle_to_u16(delta);
+  msg.speed = if distance <= RAW_STOP_RADIUS_MM {
+    0
+  } else {
+    // Simple proportional speed scaling, capped for safe goalie motion.
+    (distance * 2.0).clamp(60.0, RAW_MAX_SPEED_MM_S).round() as u16
+  };
+  // Keep looking at the ball while moving.
+  msg.orient = angle_to_u16(sub(ball_pos, self_pos));
+
+  msg
 }
