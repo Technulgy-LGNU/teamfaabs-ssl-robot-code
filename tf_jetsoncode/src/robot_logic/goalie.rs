@@ -1,35 +1,35 @@
 use crate::communication::{TeensySendMsg, VisionMsg};
 use crate::config::Config;
 use crate::proto::{CpRobot, CpTrackedRobot, CpVector2};
-use crate::robot_logic::helpers::{Vec2f, angle_to_u16, clamp_to_own_penalty, inside_own_penalty_area, lerp, own_goal_side, own_goal_x, sub, vec2f, vec2f_from_cp, raw_move_towards, RAW_STOP_RADIUS_MM};
+use crate::robot_logic::helpers::{Vec2f, clamp_to_own_penalty, inside_own_penalty_area, lerp, own_goal_side, own_goal_x, raw_move_towards, RAW_STOP_RADIUS_MM};
 use crate::robot_logic::orca::{self, OrcaOptions};
 
 // How far the goalie should stay in front of the goal line when guarding.
-const GOAL_LINE_MARGIN_MM: f32 = 120.0;
+const GOAL_LINE_MARGIN_MM: f32 = 120f32;
 // Extra distance from the outer penalty-area edge when the ball is far away.
-const PENALTY_EDGE_MARGIN_MM: f32 = 0.0;
+const PENALTY_EDGE_MARGIN_MM: f32 = 0f32;
 // Distance in front of the goal line used as the interception lane.
-const INTERCEPT_LINE_MM: f32 = 220.0;
+const INTERCEPT_LINE_MM: f32 = 220f32;
 // Maximum ORCA speed while approaching the penalty area.
-const ORCA_MAX_SPEED_MM_S: f32 = 1_200.0;
+const ORCA_MAX_SPEED_MM_S: f32 = 1_200f32;
 // Prediction horizon used to detect a kick/shot that is likely to reach goal.
-const SHOT_LOOKAHEAD_S: f32 = 4.0;
+const SHOT_LOOKAHEAD_S: f32 = 4f32;
 // Allowed vertical miss tolerance when deciding that a ball is heading at goal.
-const SHOT_Y_MARGIN_MM: f32 = 220.0;
+const SHOT_Y_MARGIN_MM: f32 = 220f32;
 // Keeps the goalie inside the goal opening instead of hugging the exact edge.
-const GUARD_Y_MARGIN_MM: f32 = 20.0;
+const GUARD_Y_MARGIN_MM: f32 = 20f32;
 
 #[inline]
 pub fn goalie(
   cfg: &Config, cp_data: &CpRobot, robot_self: &CpTrackedRobot, _vision: &VisionMsg,
   mut msg: TeensySendMsg,
 ) -> TeensySendMsg {
-  let self_pos = vec2f_from_cp(robot_self.pos);
-  let ball_pos = vec2f_from_cp(cp_data.ball.pos);
-  let ball_vel = cp_data.ball.vel.map_or(vec2f(0.0, 0.0), vec2f_from_cp);
+  let self_pos = Vec2f::new_from_cp(robot_self.pos);
+  let ball_pos = Vec2f::new_from_cp(cp_data.ball.pos);
+  let ball_vel = cp_data.ball.vel.map_or(Vec2f::new(0f32, 0f32), Vec2f::new_from_cp);
 
   // Always face the ball globally, independent of the movement direction.
-  msg.orient = angle_to_u16(sub(ball_pos, self_pos));
+  msg.orient = (ball_pos - self_pos).angle_to_u16();
 
   // Choose a defensive target: either a predicted interception point or a guard point.
   let target = goalie_target(cfg, ball_pos, ball_vel);
@@ -50,16 +50,16 @@ pub fn goalie(
         avoid_ball: false,
         avoid_penalty_area: false,
         time_horizon_s: 2.5,
-        robot_influence_mm: 650.0,
-        ball_influence_mm: 450.0,
-        penalty_margin_mm: 0.0,
-        static_influence_mm: 800.0,
+        robot_influence_mm: 650f32,
+        ball_influence_mm: 450f32,
+        penalty_margin_mm: 0f32,
+        static_influence_mm: 800f32,
         ..OrcaOptions::default()
       },
     );
 
     msg = orca::orca_to_teensy(msg, &plan, *robot_self);
-    msg.orient = angle_to_u16(sub(ball_pos, self_pos));
+    msg.orient = (ball_pos - self_pos).angle_to_u16();
   }
 
   msg
@@ -73,7 +73,7 @@ fn goalie_target(cfg: &Config, ball_pos: Vec2f, ball_vel: Vec2f) -> Vec2f {
   // Half the goal opening, used to keep the goalie aligned with the ball.
   let goal_half_width = cfg.field.goal_width_mm() * 0.5;
   // The inner edge of the penalty area on our side.
-  let penalty_depth = cfg.field.penalty_area_height_mm().max(1.0);
+  let penalty_depth = cfg.field.penalty_area_height_mm().max(1f32);
   let penalty_outer_x = goal_x - goal_side * penalty_depth;
 
   // If the ball is moving toward goal fast enough, try to intercept it.
@@ -85,11 +85,11 @@ fn goalie_target(cfg: &Config, ball_pos: Vec2f, ball_vel: Vec2f) -> Vec2f {
   // as the ball gets farther away so the robot protects more of the goal area.
   let goal_guard_x = goal_x - goal_side * GOAL_LINE_MARGIN_MM;
   let outer_guard_x = penalty_outer_x - goal_side * PENALTY_EDGE_MARGIN_MM;
-  let field_scale = (cfg.field.width_mm() * 0.5).max(1.0);
-  // 0.0 near our goal, 1.0 near the far side of the field.
-  let outward = ((ball_pos.x - goal_x).abs() / field_scale).clamp(0.0, 1.0);
+  let field_scale = (cfg.field.width_mm() * 0.5).max(1f32);
+  // 0f32 near our goal, 1f32 near the far side of the field.
+  let outward = ((ball_pos.x - goal_x).abs() / field_scale).clamp(0f32, 1f32);
 
-  vec2f(
+  Vec2f::new(
     lerp(goal_guard_x, outer_guard_x, outward),
     ball_pos.y.clamp(
       -goal_half_width + GUARD_Y_MARGIN_MM,
@@ -105,13 +105,13 @@ pub(crate) fn predict_intercept(cfg: &Config, ball_pos: Vec2f, ball_vel: Vec2f) 
   // Positive values mean the ball is moving toward our goal line.
   let vel_toward_goal = ball_vel.x * goal_side;
 
-  if vel_toward_goal <= 120.0 || ball_vel.x.abs() <= 1.0 {
+  if vel_toward_goal <= 120f32 || ball_vel.x.abs() <= 1f32 {
     return None;
   }
 
   // Estimate when the ball reaches the goal line in the current trajectory.
   let t_goal = (goal_x - ball_pos.x) / ball_vel.x;
-  if !(0.0..=SHOT_LOOKAHEAD_S).contains(&t_goal) {
+  if !(0f32..=SHOT_LOOKAHEAD_S).contains(&t_goal) {
     return None;
   }
 
@@ -123,7 +123,7 @@ pub(crate) fn predict_intercept(cfg: &Config, ball_pos: Vec2f, ball_vel: Vec2f) 
   }
 
   // Place the goalie slightly in front of the expected impact point.
-  Some(vec2f(goal_x - goal_side * INTERCEPT_LINE_MM, predicted_y))
+  Some(Vec2f::new(goal_x - goal_side * INTERCEPT_LINE_MM, predicted_y))
 }
 
 #[inline]
@@ -138,7 +138,6 @@ fn cp_to_cp(v: Vec2f) -> CpVector2 {
 mod tests {
   use super::*;
   use crate::proto::CpVector2;
-  use crate::robot_logic::helpers::{angle_to_u16, vec2f};
 
   fn sample_cfg(robot_goal: bool) -> Config {
     Config {
@@ -180,32 +179,32 @@ mod tests {
   #[test]
   fn ball_further_out_moves_goalie_further_out() {
     let cfg = sample_cfg(false);
-    let near = goalie_target(&cfg, vec2f(-4_200.0, 0.0), vec2f(0.0, 0.0));
-    let far = goalie_target(&cfg, vec2f(0.0, 0.0), vec2f(0.0, 0.0));
+    let near = goalie_target(&cfg, Vec2f::new(-4_200f32, 0f32), Vec2f::new(0f32, 0f32));
+    let far = goalie_target(&cfg, Vec2f::new(0f32, 0f32), Vec2f::new(0f32, 0f32));
     assert!(far.x > near.x);
   }
 
   #[test]
   fn predicts_kick_towards_goal() {
     let cfg = sample_cfg(false);
-    let intercept = predict_intercept(&cfg, vec2f(-1_500.0, 120.0), vec2f(-1_300.0, 50.0)).unwrap();
-    assert!(intercept.x < -4_000.0);
-    assert!(intercept.y > 0.0);
+    let intercept = predict_intercept(&cfg, Vec2f::new(-1_500f32, 120f32), Vec2f::new(-1_300f32, 50f32)).unwrap();
+    assert!(intercept.x < -4_000f32);
+    assert!(intercept.y > 0f32);
   }
 
   #[test]
   fn uses_raw_inside_penalty_area() {
     let cfg = sample_cfg(false);
-    assert!(inside_own_penalty_area(&cfg, vec2f(-4_300.0, 0.0)));
-    assert!(!inside_own_penalty_area(&cfg, vec2f(-3_000.0, 0.0)));
+    assert!(inside_own_penalty_area(&cfg, Vec2f::new(-4_300f32, 0f32)));
+    assert!(!inside_own_penalty_area(&cfg, Vec2f::new(-3_000f32, 0f32)));
   }
 
   #[test]
   fn faces_ball_using_global_coordinates() {
-    let self_pos = vec2f(0.0, 0.0);
-    assert_eq!(angle_to_u16(sub(vec2f(1_000.0, 0.0), self_pos)), 0);
-    assert_eq!(angle_to_u16(sub(vec2f(0.0, 1_000.0), self_pos)), 90);
-    assert_eq!(angle_to_u16(sub(vec2f(-1_000.0, 0.0), self_pos)), 180);
+    let self_pos = Vec2f::new(0f32, 0f32);
+    assert_eq!((Vec2f::new(1_000f32, 0f32) - self_pos).angle_to_u16(), 0);
+    assert_eq!((Vec2f::new(0f32, 1_000f32) - self_pos).angle_to_u16(), 90);
+    assert_eq!((Vec2f::new(-1_000f32, 0f32) - self_pos).angle_to_u16(), 180);
   }
 
   #[test]

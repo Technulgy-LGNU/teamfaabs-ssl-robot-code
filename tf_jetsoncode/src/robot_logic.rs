@@ -3,7 +3,7 @@ use crate::config;
 use crate::proto::{CpRobot, CpTrackedRobot};
 use crate::robot_logic::ball_logic::{get_ball, receive_ball};
 use crate::robot_logic::goalie::goalie;
-use crate::robot_logic::helpers::{cpv_to_vec2i, distance_cpv, sub, vec2f_length};
+use crate::robot_logic::helpers::distance_cpv;
 use crate::robot_logic::orca::OrcaOptions;
 use tracing::info;
 

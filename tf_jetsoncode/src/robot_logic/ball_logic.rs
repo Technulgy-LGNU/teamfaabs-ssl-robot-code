@@ -1,7 +1,7 @@
 use crate::communication::{TeensySendMsg, VisionMsg};
 use crate::config::Config;
 use crate::proto::{CpRobot, CpTrackedRobot};
-use crate::robot_logic::helpers::{calculate_vector_2i, cp_to_vec2f, distance_cpv, raw_move_towards, vec2f_length, Circle, Ray, Vec2f};
+use crate::robot_logic::helpers::{distance_cpv, raw_move_towards, Circle, Ray, Vec2f, Vec2i};
 use crate::robot_logic::orca::{self, OrcaOptions};
 use std::f32::consts::PI;
 
@@ -15,15 +15,15 @@ pub async fn get_ball(
   println!("Distance to ball: {:?}", dist);
 
   // Check distance to ball, either use orca for long distance or use direct control for taking the ball
-  if dist > 500.0 {
+  if dist > 500f32 {
     let plan = orca::drive_to_target(
       cfg,
       cp_data,
       robot_self,
       cp_data.ball.pos,
       OrcaOptions {
-        max_speed_mm_s: 1_500.0,
-        stop_radius_mm: 180.0,
+        max_speed_mm_s: 1_500f32,
+        stop_radius_mm: 180f32,
         avoid_ball: false,
         ..OrcaOptions::default()
       },
@@ -31,7 +31,7 @@ pub async fn get_ball(
     msg = orca::orca_to_teensy(msg, &plan, robot_self);
   } else {
     // Calculate direction to ball as Vec2i
-    let to_ball = calculate_vector_2i(robot_self.pos, cp_data.ball.pos);
+    let to_ball = Vec2i::calculate_vector_2i(robot_self.pos, cp_data.ball.pos);
 
     // Transformation vector with respected input angle
     let trans_vector = Vec2f {
@@ -42,31 +42,31 @@ pub async fn get_ball(
     };
 
     let mut comp_dir: f32;
-    let x_c: f32 = 120.0;
-    let y_c: f32 = 0.0;
-    let d: f32 = 125.0;
+    let x_c: f32 = 120f32;
+    let y_c: f32 = 0f32;
+    let d: f32 = 125f32;
 
-    if trans_vector.x < 0.0 {
+    if trans_vector.x < 0f32 {
       comp_dir = compute_vector_angle(x_c, y_c, d, -trans_vector.x, -trans_vector.y).to_degrees();
     } else {
       comp_dir =
-        180.0 - compute_vector_angle(x_c, y_c, d, trans_vector.x, -trans_vector.y).to_degrees();
+        180f32 - compute_vector_angle(x_c, y_c, d, trans_vector.x, -trans_vector.y).to_degrees();
     }
 
-    if (trans_vector.x < 15.0)
-      && (trans_vector.x > -15.0)
-      && (trans_vector.y < 100.0)
-      && (trans_vector.y > 0.0)
+    if (trans_vector.x < 15f32)
+      && (trans_vector.x > -15f32)
+      && (trans_vector.y < 100f32)
+      && (trans_vector.y > 0f32)
     {
-      comp_dir = 90.0;
+      comp_dir = 90f32;
     }
 
-    comp_dir = comp_dir - 90.0 + robot_self.orientation as f32;
+    comp_dir = comp_dir - 90f32 + robot_self.orientation as f32;
 
     println!("Computed Direction: {:?}", comp_dir);
 
     while comp_dir.is_sign_negative() {
-      comp_dir += 360.0;
+      comp_dir += 360f32;
     }
 
     // Set Teensy message
@@ -88,7 +88,7 @@ fn compute_vector_angle(x_c: f32, y_c: f32, r: f32, x: f32, y: f32) -> f32 {
   let mut d = (x - x_c).hypot(y - y_c);
 
   // Avoid dividing through zero
-  if d.is_nan() || d == 0.0 {
+  if d.is_nan() || d == 0f32 {
     d = 1e-6;
   }
 
@@ -98,7 +98,7 @@ fn compute_vector_angle(x_c: f32, y_c: f32, r: f32, x: f32, y: f32) -> f32 {
     // Calculate tangential angle
     let theta = (y - y_c).atan2(x - x_c);
 
-    let alpha = constrain(r / d, -1.0, 1.0).asin();
+    let alpha = constrain(r / d, -1f32, 1f32).asin();
 
     // Calculate angle of tangent
     angle = PI + theta + alpha;
@@ -111,21 +111,21 @@ fn compute_vector_angle(x_c: f32, y_c: f32, r: f32, x: f32, y: f32) -> f32 {
     let i_c_y = theta.sin() * d;
 
     // Mirror point
-    let o_c_x = theta.cos() * (2.0 * r - d);
-    let o_c_y = theta.sin() * (2.0 * r - d);
+    let o_c_x = theta.cos() * (2f32 * r - d);
+    let o_c_y = theta.sin() * (2f32 * r - d);
 
     // If value is NaN, return 0
     if i_c_x.is_nan() || i_c_y.is_nan() || o_c_x.is_nan() || o_c_y.is_nan() {
-      return 0.0;
+      return 0f32;
     }
 
     // Calculate mirror matrix
     let theta3 = (i_c_y - y_c).atan2(i_c_x - x_c);
 
-    let s11 = (2.0 * theta3).cos();
-    let s12 = (2.0 * theta3).sin();
-    let s21 = (2.0 * theta3).sin();
-    let s22 = -(2.0 * theta3).cos();
+    let s11 = (2f32 * theta3).cos();
+    let s12 = (2f32 * theta3).sin();
+    let s21 = (2f32 * theta3).sin();
+    let s22 = -(2f32 * theta3).cos();
 
     // Mirrored tangential angle
     let theta_sp = (o_c_y - y_c).atan2(o_c_x - x_c);
@@ -133,11 +133,11 @@ fn compute_vector_angle(x_c: f32, y_c: f32, r: f32, x: f32, y: f32) -> f32 {
     let mut denom = (o_c_x - x_c).hypot(o_c_y - y_c);
 
     // Avoid NaN because of invalid value
-    if denom.is_nan() || denom == 0.0 {
+    if denom.is_nan() || denom == 0f32 {
       denom = 1e-6;
     }
 
-    let alpha_sp = constrain(r / denom, -1.0, 1.0).asin();
+    let alpha_sp = constrain(r / denom, -1f32, 1f32).asin();
 
     let theta1_sp = PI + theta_sp + alpha_sp;
 
@@ -148,7 +148,7 @@ fn compute_vector_angle(x_c: f32, y_c: f32, r: f32, x: f32, y: f32) -> f32 {
 
     // Avoid NaN in atan2()
     if new_x.is_nan() || new_y.is_nan() {
-      return 0.0;
+      return 0f32;
     }
 
     angle = new_y.atan2(new_x);
@@ -160,13 +160,13 @@ fn compute_vector_angle(x_c: f32, y_c: f32, r: f32, x: f32, y: f32) -> f32 {
 pub fn receive_ball(
   cp_data: &CpRobot, robot_self: CpTrackedRobot, _vision: &VisionMsg, mut msg: TeensySendMsg,
 ) -> TeensySendMsg {
-  let self_pos = cp_to_vec2f(robot_self.pos);
-  let ball_pos = cp_to_vec2f(cp_data.ball.pos);
-  let ball_vel = cp_to_vec2f(cp_data.ball.vel.unwrap_or_default());
+  let self_pos = Vec2f::new_from_cp(robot_self.pos);
+  let ball_pos = Vec2f::new_from_cp(cp_data.ball.pos);
+  let ball_vel = Vec2f::new_from_cp(cp_data.ball.vel.unwrap_or_default());
 
   let circle_ball_predict = Circle {
     center: ball_pos,
-    radius: vec2f_length(ball_vel) * 1.0 + 15f32,
+    radius: ball_vel.norm() * 1f32 + 15f32,
   };
 
   let ray_ball = Ray {
@@ -181,6 +181,9 @@ pub fn receive_ball(
   };
 
 
+  // Check if ball is at the robot in the next two seconds and stop
+  let d = self_pos - ball_pos;
+  let t = (d * ball_vel) / ball_vel.length_squared();
   msg = raw_move_towards(msg, self_pos, ball_pos, intersection_point);
 
   msg
@@ -199,7 +202,7 @@ pub fn ray_circle_exit(ray: Ray, circle: Circle) -> Option<Vec2f> {
 
   let dir = {
     let len = (ray.direction.x * ray.direction.x + ray.direction.y * ray.direction.y).sqrt();
-    if len == 0.0 { return None; }
+    if len == 0f32 { return None; }
     Vec2f { x: ray.direction.x / len, y: ray.direction.y / len }
   };
 
@@ -214,7 +217,7 @@ pub fn ray_circle_exit(ray: Ray, circle: Circle) -> Option<Vec2f> {
   // Origin is inside the circle so discriminant is always >= 0,
   // and exactly one of the two t values is positive.
   let discriminant = b * b - c;
-  let t = -b + discriminant.max(0.0).sqrt();
+  let t = -b + discriminant.max(0f32).sqrt();
 
   Some(Vec2f {
     x: ray.origin.x + dir.x * t,

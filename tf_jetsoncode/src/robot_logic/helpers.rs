@@ -1,3 +1,4 @@
+use std::ops::{Add, Mul, Sub};
 use crate::communication::TeensySendMsg;
 use crate::config;
 use crate::proto::CpVector2;
@@ -16,10 +17,141 @@ pub struct Vec2i {
   pub(crate) y: i32,
 }
 
+impl Vec2i {
+  #[inline]
+  pub(crate) fn new(x: i32, y: i32) -> Self {
+    Vec2i {
+      x,
+      y,
+    }
+  }
+
+  #[inline]
+  pub(crate) fn new_from_cp(v: CpVector2) -> Vec2i {
+    Self::new(v.x, v.y)
+  }
+
+  #[inline]
+  pub(crate) fn vec2i_length(&self) -> f32 {
+    let x = self.x as f32;
+    let y = self.y as f32;
+    (x * x + y * y).sqrt()
+  }
+
+  #[inline]
+  pub fn calculate_vector_2i(a: CpVector2, b: CpVector2) -> Vec2i {
+    Self::new (
+      a.x - b.x,
+      a.y - b.y,
+    )
+  }
+}
+
 #[derive(Debug, Clone, Copy, Default, PartialEq)]
 pub struct Vec2f {
   pub(crate) x: f32,
   pub(crate) y: f32,
+}
+
+
+impl Vec2f {
+  #[inline]
+  pub(crate) fn new(x: f32, y: f32) -> Vec2f {
+    Vec2f {
+      x,
+      y,
+    }
+  }
+
+  #[inline]
+  pub(crate) fn new_from_cp(v: CpVector2) -> Vec2f {
+    Self::new(v.x as f32, v.y as f32)
+  }
+
+  pub(crate) fn new_from_vec2i(v: Vec2i) -> Vec2f {
+    Self::new(v.x as f32, v.y as f32)
+  }
+
+  #[inline]
+  pub(crate) fn length_squared(&self) -> f32 {
+    self.x * self.x + self.y * self.y
+  }
+
+  #[inline]
+  pub(crate) fn norm(self) -> f32 {
+    self.x.hypot(self.y)
+  }
+
+  #[inline]
+  pub(crate) fn normalize(self) -> Vec2f {
+    let n = self.norm();
+    if n <= 1e-6 {
+      Self::new(0.0, 0.0)
+    } else {
+      self.scale(1.0 / n)
+    }
+  }
+
+  #[inline]
+  pub(crate) fn scale(self, s: f32) -> Vec2f {
+    Self::new(self.x * s, self.y * s)
+  }
+
+  #[inline]
+  pub(crate) fn calculate_vector_2f(a: CpVector2, b: CpVector2) -> Vec2f {
+    Self::new(
+      (a.x - b.x) as f32,
+      (a.y - b.y) as f32,
+    )
+  }
+
+  #[inline]
+  pub(crate) fn vec2f_to_cp(self) -> CpVector2 {
+    CpVector2 {
+      x: self.x as i32,
+      y: self.y as i32,
+    }
+  }
+
+  #[inline]
+  pub(crate) fn angle_to_u16(self) -> u16 {
+    let mut deg = self.y.atan2(self.x).to_degrees();
+    while deg < 0.0 {
+      deg += 360.0;
+    }
+    while deg >= 360.0 {
+      deg -= 360.0;
+    }
+    deg.round().clamp(0.0, 359.0) as u16
+  }
+}
+
+impl Add for Vec2f {
+  type Output = Vec2f;
+  
+  fn add(self, rhs: Self) -> Self::Output {
+    Vec2f::new(self.x + rhs.x, self.y + rhs.y)
+  }
+}
+
+
+impl Sub for Vec2f {
+  type Output = Vec2f;
+
+  fn sub(self, rhs: Self) -> Self::Output {
+    Vec2f {
+      x: self.x - rhs.x,
+      y: self.y - rhs.y,
+    }
+  }
+}
+
+impl Mul for Vec2f {
+  type Output = f32;
+
+  fn mul(self, rhs: Self) -> Self::Output {
+    self.x * rhs.x + self.y * rhs.x
+  }
 }
 
 #[inline]
@@ -30,38 +162,10 @@ pub fn distance_cpv(a: CpVector2, b: CpVector2) -> f32 {
 }
 
 #[inline]
-pub fn calculate_vector_2i(a: CpVector2, b: CpVector2) -> Vec2i {
-  Vec2i {
-    x: a.x - b.x,
-    y: a.y - b.y,
-  }
-}
-
-#[inline]
-pub fn calculate_vector_2f(a: CpVector2, b: CpVector2) -> Vec2f {
-  Vec2f {
-    x: (a.x - b.x) as f32,
-    y: (a.y - b.y) as f32,
-  }
-}
-
-#[inline]
-pub fn vec2i_length(v: Vec2i) -> f32 {
+pub fn cp_length(v: CpVector2) -> f32 {
   let x = v.x as f32;
   let y = v.y as f32;
   (x * x + y * y).sqrt()
-}
-
-#[inline]
-pub fn cp_vec2i_length(v: CpVector2) -> f32 {
-  let x = v.x as f32;
-  let y = v.y as f32;
-  (x * x + y * y).sqrt()
-}
-
-#[inline]
-pub(crate) fn vec2f_length(v: Vec2f) -> f32 {
-  (v.x * v.x + v.y * v.y).sqrt()
 }
 
 #[inline]
@@ -70,68 +174,9 @@ pub fn vec2i_to_f32(v: Vec2i) -> (f32, f32) {
 }
 
 #[inline]
-pub fn cpv_to_vec2i(v: CpVector2) -> Vec2i {
-  Vec2i { x: v.x, y: v.y }
-}
-
-#[inline]
-pub fn cp_to_vec2f(v: CpVector2) -> Vec2f {
-  vec2f(v.x as f32, v.y as f32)
-}
-
-#[inline]
-pub(crate) fn add(a: Vec2f, b: Vec2f) -> Vec2f {
-  vec2f(a.x + b.x, a.y + b.y)
-}
-
-#[inline]
-pub(crate) fn sub(a: Vec2f, b: Vec2f) -> Vec2f {
-  vec2f(a.x - b.x, a.y - b.y)
-}
-
-#[inline]
-pub(crate) fn vec2f(x: f32, y: f32) -> Vec2f {
-  Vec2f { x, y }
-}
-
-#[inline]
-pub(crate) fn norm(v: Vec2f) -> f32 {
-  v.x.hypot(v.y)
-}
-
-#[inline]
-pub(crate) fn normalize(v: Vec2f) -> Vec2f {
-  let n = norm(v);
-  if n <= 1e-6 {
-    vec2f(0.0, 0.0)
-  } else {
-    scale(v, 1.0 / n)
-  }
-}
-
-#[inline]
-pub(crate) fn scale(v: Vec2f, s: f32) -> Vec2f {
-  vec2f(v.x * s, v.y * s)
-}
-
-#[inline]
 pub(crate) fn lerp(a: f32, b: f32, t: f32) -> f32 {
   a + (b - a) * t.clamp(0.0, 1.0)
 }
-
-#[inline]
-pub(crate) fn cp_to_cp(v: Vec2f) -> CpVector2 {
-  CpVector2 {
-    x: v.x as i32,
-    y: v.y as i32,
-  }
-}
-
-#[inline]
-pub(crate) fn vec2f_from_cp(v: CpVector2) -> Vec2f {
-  vec2f(v.x as f32, v.y as f32)
-}
-
 
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct Circle {
@@ -173,18 +218,6 @@ pub(crate) fn own_goal_side(cfg: &config::Config) -> f32 {
 }
 
 #[inline]
-pub(crate) fn angle_to_u16(v: Vec2f) -> u16 {
-  let mut deg = v.y.atan2(v.x).to_degrees();
-  while deg < 0.0 {
-    deg += 360.0;
-  }
-  while deg >= 360.0 {
-    deg -= 360.0;
-  }
-  deg.round().clamp(0.0, 359.0) as u16
-}
-
-#[inline]
 pub(crate) fn inside_own_penalty_area(cfg: &config::Config, pos: Vec2f) -> bool {
   let goal_x = own_goal_x(cfg);
   let goal_side = own_goal_side(cfg);
@@ -212,7 +245,7 @@ pub(crate) fn clamp_outside_own_penalty(cfg: &config::Config, point: Vec2f) -> V
     point.x.max(penalty_outer_x + safety_margin)
   };
 
-  vec2f(
+  Vec2f::new(
     x,
     point
       .y
@@ -231,7 +264,7 @@ pub(crate) fn clamp_to_own_penalty(cfg: &config::Config, point: Vec2f) -> Vec2f 
   let x_max = goal_x.max(penalty_outer_x);
   let y_half = cfg.field.penalty_area_width_mm().max(1.0) * 0.5;
 
-  vec2f(
+  Vec2f::new(
     point.x.clamp(x_min + 40.0, x_max - 40.0),
     point.y.clamp(-y_half + 40.0, y_half - 40.0),
   )
@@ -243,11 +276,11 @@ pub(crate) fn raw_move_towards(
 ) -> TeensySendMsg {
   let mut msg = msg;
   // Drive toward the chosen defensive target using raw field-global direction.
-  let delta = sub(target, self_pos);
-  let distance = norm(delta);
+  let delta = target - self_pos;
+  let distance = delta.norm();
 
   // Movement direction is global, not relative to robot heading.
-  msg.dir = angle_to_u16(delta);
+  msg.dir = delta.angle_to_u16();
   msg.speed = if distance <= RAW_STOP_RADIUS_MM {
     0
   } else {
@@ -255,7 +288,7 @@ pub(crate) fn raw_move_towards(
     (distance * 2.0).clamp(60.0, RAW_MAX_SPEED_MM_S).round() as u16
   };
   // Keep looking at the ball while moving.
-  msg.orient = angle_to_u16(sub(ball_pos, self_pos));
+  msg.orient = (ball_pos - self_pos).angle_to_u16();
 
   msg
 }
