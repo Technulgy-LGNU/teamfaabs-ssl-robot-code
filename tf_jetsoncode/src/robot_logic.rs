@@ -18,7 +18,6 @@ pub async fn command(
 ) -> TeensySendMsg {
   // Vars
   let robot_pos = Vec2f::new_from_cp(robot_self.pos);
-  // let robot_vel = Vec2f::new_from_cp(robot_self.vel.unwrap_or_default());
   let ball_pos = Vec2f::new_from_cp(cp_data.ball.pos);
   let ball_vel = Vec2f::new_from_cp(cp_data.ball.vel.unwrap_or_default());
 
@@ -85,16 +84,13 @@ pub async fn command(
     4 => {
       // Rec Kick
       if ball_vel.norm() >= 200f32 {
-      msg = receive_ball(cp_data, robot_self, vision_data, msg);
+        msg = receive_ball(cp_data, robot_self, vision_data, msg);
       } else {
         msg.speed = 0;
       }
+
       // Keep looking at the ball while moving.
-      if ball_vel.norm() <= 300f32 {
-        msg.orient = (ball_pos - robot_pos).angle_to_u16();
-      } else {
-        msg.orient = ball_vel.scale(-1f32).angle_to_u16();
-      }
+      msg.orient = (ball_pos - robot_pos).angle_to_u16();
 
       // Always enable dribbler
       msg.set_flag(send_flags::DRIBBLER);

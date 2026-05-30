@@ -1,9 +1,7 @@
 use crate::communication::{TeensySendMsg, VisionMsg};
 use crate::config::Config;
 use crate::proto::{CpRobot, CpTrackedRobot};
-use crate::robot_logic::helpers::{
-  distance_cpv, distance_vec2f, raw_move_towards, Circle, Ray, Vec2f, Vec2i,
-};
+use crate::robot_logic::helpers::{distance_cpv, distance_vec2f, raw_move_towards, Vec2f, Vec2i, RAW_MAX_SPEED_MM_S};
 use crate::robot_logic::orca::{self, OrcaOptions};
 use std::f32::consts::PI;
 
@@ -159,95 +157,112 @@ fn compute_vector_angle(x_c: f32, y_c: f32, r: f32, x: f32, y: f32) -> f32 {
   angle
 }
 
-pub fn receive_ball(
+#[inline]
+pub(crate) fn receive_ball(
   cp_data: &CpRobot, robot_self: CpTrackedRobot, _vision: &VisionMsg, mut msg: TeensySendMsg,
 ) -> TeensySendMsg {
   let self_pos = Vec2f::new_from_cp(robot_self.pos);
-  let self_vel = Vec2f::new_from_cp(robot_self.vel.unwrap_or_default());
   let ball_pos = Vec2f::new_from_cp(cp_data.ball.pos);
   let ball_vel = Vec2f::new_from_cp(cp_data.ball.vel.unwrap_or_default());
 
-  let circle_ball_predict = Circle {
-    center: ball_pos,
-    radius: ball_vel.norm() * 0.7f32 + 15f32,
+
+  // Check if ball is even moving towards robot
+  if !is_moving_towards(ball_pos, ball_vel, self_pos) {
+    msg.speed = 0;
+    return msg
+  }
+  // let interception_point = match intercept_ball(ball_pos, ball_vel, self_pos) {
+  //   Some(point) => point,
+  //   None => {
+  //     self_pos
+  //   }
+  // };
+  let forward = (ball_pos - self_pos).normalized();
+  let interception_point = match intercept_with_constraints(self_pos, forward, ball_pos, ball_vel) {
+    Some(point) => point,
+    None => {
+      self_pos
+    }
   };
-
-  let ray_ball = Ray {
-    origin: ball_pos,
-    direction: ball_vel,
-  };
-  let intersection_point = ray_circle_exit(ray_ball, circle_ball_predict).unwrap_or_else(|| self_pos);
-
-  // Trans Vector stuff
-  let to_ball = Vec2i::calculate_vector_2i(robot_self.pos, cp_data.ball.pos);
-
-  let trans_vector = Vec2f {
-    x: -to_ball.x as f32 * f32::sin((robot_self.orientation as f32).to_radians())
-      + to_ball.y as f32 * f32::cos((robot_self.orientation as f32).to_radians()),
-    y: -to_ball.x as f32 * f32::cos((robot_self.orientation as f32).to_radians())
-      - to_ball.y as f32 * f32::sin((robot_self.orientation as f32).to_radians()),
-  };
-
-  msg = raw_move_towards(msg, self_pos, intersection_point);
-  // Stay still, when ball is moving towards the robot
-  match distance_vec2f(self_pos, ball_pos) {
-    d if (d < 300f32) && (trans_vector.x.abs() < 40f32) => msg.speed = 0,
-    // d if d < 300f32 => msg.speed = (ball_vel.norm() - self_vel.norm() - 250f32).max(60f32) as u16,
-    _ => {}
+  msg = raw_move_towards(msg, self_pos, interception_point);
+  if distance_vec2f(self_pos, ball_pos) <= 100f32 {
+    msg.speed = 0;
   }
 
   msg
 }
 
-/// Returns the point where the ray exits the circle.
-/// Returns `None` if the direction vector is zero-length.
-/// Panics in debug mode if the ray origin is outside the circle.
 #[inline]
-pub fn ray_circle_exit(ray: Ray, circle: Circle) -> Option<Vec2f> {
-  debug_assert!(
-    (ray.origin.x - circle.center.x).powi(2) + (ray.origin.y - circle.center.y).powi(2)
-      <= circle.radius * circle.radius + 1e-6,
-    "ray origin must be inside the circle"
-  );
+fn intercept_with_constraints(
+  robot_pos: Vec2f,
+  forward: Vec2f, // normalized direction robot considers "front"
+  ball_pos: Vec2f,
+  ball_vel: Vec2f,
+) -> Option<Vec2f> {
+  let max_t = 10.0; // horizon in seconds (tune)
 
-  let dir = {
-    let len = ray.direction.norm();
-    if len == 0f32 {
-      return None;
+  let mut lo = 0.0;
+  let mut hi = max_t;
+
+  let mut best: Option<(f32, Vec2f)> = None;
+
+  for _ in 0..30 {
+    let mid = (lo + hi) * 0.5;
+
+    let ball_p = ball_pos + ball_vel * mid;
+
+    let to_ball = ball_p - robot_pos;
+
+    // reject "front" targets
+    if to_ball.dot(forward) > 0.0 {
+      lo = mid;
+      continue;
     }
-    Vec2f {
-      x: ray.direction.x / len,
-      y: ray.direction.y / len,
+
+    let dist = to_ball.norm_squared().sqrt();
+    let speed = speed_from_distance(dist);
+    let robot_time = dist / speed;
+
+    let diff = robot_time - mid;
+
+    if diff <= 0.0 {
+      best = Some((mid, ball_p));
+      hi = mid;
+    } else {
+      lo = mid;
     }
-  };
+  }
 
-  let oc = Vec2f {
-    x: ray.origin.x - circle.center.x,
-    y: ray.origin.y - circle.center.y,
-  };
-
-  let b = dir.x * oc.x + dir.y * oc.y;
-  let c = oc.x * oc.x + oc.y * oc.y - circle.radius * circle.radius;
-
-  // Origin is inside the circle so discriminant is always >= 0,
-  // and exactly one of the two t values is positive.
-  let discriminant = b * b - c;
-  let t = -b + discriminant.max(0f32).sqrt();
-
-  Some(Vec2f {
-    x: ray.origin.x + dir.x * t,
-    y: ray.origin.y + dir.y * t,
-  })
+  best.map(|(_, p)| p)
 }
 
-// pub(crate) fn distance_point_to_ray(point: Vec2f, ray: Ray) -> f32 {
-//   let v = ray.origin - point;
-//   let t = v.dot(ray.direction) / ray.direction.norm_squared();
-//
-//   if t <= 0f32 {
-//     v.norm()
-//   } else {
-//     let closest = ray.direction.scale(t);
-//     (point - closest).norm()
-//   }
-// }
+#[inline]
+fn speed_from_distance(dist: f32) -> f32 {
+  (dist * 3.0).clamp(60.0, RAW_MAX_SPEED_MM_S)
+}
+
+#[inline]
+fn robot_can_reach(
+  robot_pos: Vec2f,
+  target: Vec2f,
+) -> bool {
+  let d = target - robot_pos;
+  let dist = d.norm_squared().sqrt();
+
+  let speed = speed_from_distance(dist);
+
+  let time_needed = dist / speed;
+
+  // "reachable at time t" is checked outside
+  time_needed <= 1.0 // placeholder scaling; overridden in search
+}
+
+#[inline]
+pub(crate) fn is_moving_towards(
+  ball_pos: Vec2f,
+  ball_vel: Vec2f,
+  robot_pos: Vec2f,
+) -> bool {
+  let to_robot = robot_pos - ball_pos;
+  to_robot.dot(ball_vel) > 0.0
+}

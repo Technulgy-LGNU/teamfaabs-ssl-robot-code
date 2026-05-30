@@ -54,10 +54,10 @@ impl Vec2f {
     Self::new(v.x as f32, v.y as f32)
   }
 
-  // #[inline]
-  // pub(crate) fn norm_squared(&self) -> f32 {
-  //   self.x * self.x + self.y * self.y
-  // }
+  #[inline]
+  pub(crate) fn norm_squared(&self) -> f32 {
+    self.x * self.x + self.y * self.y
+  }
 
   #[inline]
   pub(crate) fn norm(self) -> f32 {
@@ -65,7 +65,7 @@ impl Vec2f {
   }
 
   #[inline]
-  pub(crate) fn normalize(self) -> Vec2f {
+  pub(crate) fn normalized(self) -> Vec2f {
     let n = self.norm();
     if n <= 1e-6 {
       Self::new(0f32, 0f32)
@@ -80,11 +80,11 @@ impl Vec2f {
   }
 
   /// Scalar Product
-  // #[inline]
-  // pub(crate) fn dot(self, other: Vec2f) -> f32 {
-  //   self.x * other.x + self.y * other.y
-  // }
-  //
+  #[inline]
+  pub(crate) fn dot(self, other: Vec2f) -> f32 {
+    self.x * other.x + self.y * other.y
+  }
+
   // #[inline]
   // pub(crate) fn calculate_vector_2f(a: CpVector2, b: CpVector2) -> Vec2f {
   //   Self::new(
@@ -142,6 +142,16 @@ impl Mul for Vec2f {
   }
 }
 
+impl Mul<f32> for Vec2f {
+  type Output = Vec2f;
+
+  #[inline]
+  fn mul(self, rhs: f32) -> Self::Output {
+    Vec2f::new(self.x * rhs, self.y * rhs)
+  }
+
+}
+
 impl Div for Vec2f {
   type Output = Vec2f;
 
@@ -181,19 +191,6 @@ pub(crate) fn own_goal_x(cfg: &config::Config) -> f32 {
 #[inline]
 pub(crate) fn own_goal_side(cfg: &config::Config) -> f32 {
   if cfg.robot_goal { -1f32 } else { 1f32 }
-}
-
-#[derive(Debug, Clone, Copy)]
-pub(crate) struct Circle {
-  pub center: Vec2f,
-  pub radius: f32,
-}
-
-#[derive(Debug, Clone, Copy)]
-pub(crate) struct Ray {
-  pub origin: Vec2f,
-  /// Does not need to be normalized — the function handles that.
-  pub direction: Vec2f,
 }
 
 #[inline]
@@ -241,7 +238,7 @@ pub(crate) fn raw_move_towards(
     0
   } else {
     // Simple proportional speed scaling, capped for safe goalie motion.
-    (distance * 2f32).clamp(60f32, RAW_MAX_SPEED_MM_S).round() as u16
+    (distance * 3f32).clamp(60f32, RAW_MAX_SPEED_MM_S).round() as u16
   };
 
   msg

@@ -119,7 +119,7 @@ pub fn drive_to_target(
   );
   desired_speed = desired_speed.min(options.max_speed_mm_s);
 
-  let mut velocity = to_target.normalize().scale(desired_speed);
+  let mut velocity = to_target.normalized().scale(desired_speed);
   velocity = avoid_dynamic_robots(cfg, cp_data, robot_self, velocity, options);
 
   if options.avoid_ball {
@@ -336,7 +336,7 @@ fn steer_around_dynamic(
       Vec2f::new(1f32, 0f32)
     };
 
-    let lateral = Vec2f::new(-rel_pos.y, rel_pos.x).normalize();
+    let lateral = Vec2f::new(-rel_pos.y, rel_pos.x).normalized();
     let dodge_dir = if rel_pos.y.abs() < radius_mm * 0.5 {
       lateral
     } else {
