@@ -1,6 +1,6 @@
 use crate::communication::{TeensySendMsg, VisionMsg};
 use crate::config::Config;
-use crate::proto::{CpRobot, CpTrackedRobot, CpVector2};
+use crate::proto::{CpRobot, CpTrackedRobot};
 use crate::robot_logic::helpers::{Vec2f, clamp_to_own_penalty, inside_own_penalty_area, lerp, own_goal_side, own_goal_x, raw_move_towards, RAW_STOP_RADIUS_MM};
 use crate::robot_logic::orca::{self, OrcaOptions};
 
@@ -35,14 +35,17 @@ pub fn goalie(
   let target = goalie_target(cfg, ball_pos, ball_vel);
   if inside_own_penalty_area(cfg, self_pos) {
     // Once inside the penalty area, use raw field-global motion instead of ORCA.
-    msg = raw_move_towards(msg, self_pos, ball_pos, target);
+    msg = raw_move_towards(msg, self_pos, target);
+    // Keep looking at the ball while moving.
+    msg.orient = (ball_pos - self_pos).angle_to_u16();
+    // msg.orient = ball_pos.scale(-1f32).angle_to_u16();
   } else {
     // ORCA is only used for the approach into the penalty area.
     let plan = orca::drive_to_target(
       cfg,
       cp_data,
       *robot_self,
-      cp_to_cp(target),
+      target.vec2f_to_cp(),
       OrcaOptions {
         max_speed_mm_s: ORCA_MAX_SPEED_MM_S,
         approach_gain: 1.45,
@@ -124,14 +127,6 @@ pub(crate) fn predict_intercept(cfg: &Config, ball_pos: Vec2f, ball_vel: Vec2f) 
 
   // Place the goalie slightly in front of the expected impact point.
   Some(Vec2f::new(goal_x - goal_side * INTERCEPT_LINE_MM, predicted_y))
-}
-
-#[inline]
-fn cp_to_cp(v: Vec2f) -> CpVector2 {
-  CpVector2 {
-    x: v.x as i32,
-    y: v.y as i32,
-  }
 }
 
 #[cfg(test)]

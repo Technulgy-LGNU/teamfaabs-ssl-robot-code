@@ -124,9 +124,9 @@ impl TeensySendMsg {
     self.flags |= flag;
   }
 
-  pub fn clear_flag(&mut self, flag: u16) {
-    self.flags &= !flag;
-  }
+  // pub fn clear_flag(&mut self, flag: u16) {
+  //   self.flags &= !flag;
+  // }
 
   pub fn clear_all_flags(&mut self) {
     self.flags = 0;

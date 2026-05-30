@@ -1,10 +1,11 @@
-use crate::communication::{send_flags, TeensySendMsg, VisionMsg};
+use crate::communication::{TeensySendMsg, VisionMsg};
 use crate::config::Config;
 use crate::proto::{CpRobot, CpTrackedRobot};
-use crate::robot_logic::helpers::{distance_cpv, raw_move_towards, Circle, Ray, Vec2f, Vec2i};
+use crate::robot_logic::helpers::{
+  distance_cpv, distance_vec2f, raw_move_towards, Circle, Ray, Vec2f, Vec2i,
+};
 use crate::robot_logic::orca::{self, OrcaOptions};
 use std::f32::consts::PI;
-use tracing::info;
 
 /// Function drives near the ball with orca and then tries to get the ball using Junior code
 #[inline]
@@ -162,32 +163,38 @@ pub fn receive_ball(
   cp_data: &CpRobot, robot_self: CpTrackedRobot, _vision: &VisionMsg, mut msg: TeensySendMsg,
 ) -> TeensySendMsg {
   let self_pos = Vec2f::new_from_cp(robot_self.pos);
+  let self_vel = Vec2f::new_from_cp(robot_self.vel.unwrap_or_default());
   let ball_pos = Vec2f::new_from_cp(cp_data.ball.pos);
   let ball_vel = Vec2f::new_from_cp(cp_data.ball.vel.unwrap_or_default());
 
   let circle_ball_predict = Circle {
     center: ball_pos,
-    radius: ball_vel.norm() * 1f32 + 15f32,
+    radius: ball_vel.norm() * 0.7f32 + 15f32,
   };
 
   let ray_ball = Ray {
     origin: ball_pos,
     direction: ball_vel,
   };
-  let intersection_point = match ray_circle_exit(ray_ball, circle_ball_predict) {
-    Some(intersection_point) => {intersection_point}
-    None => {
-      self_pos
-    }
+  let intersection_point = ray_circle_exit(ray_ball, circle_ball_predict).unwrap_or_else(|| self_pos);
+
+  // Trans Vector stuff
+  let to_ball = Vec2i::calculate_vector_2i(robot_self.pos, cp_data.ball.pos);
+
+  let trans_vector = Vec2f {
+    x: -to_ball.x as f32 * f32::sin((robot_self.orientation as f32).to_radians())
+      + to_ball.y as f32 * f32::cos((robot_self.orientation as f32).to_radians()),
+    y: -to_ball.x as f32 * f32::cos((robot_self.orientation as f32).to_radians())
+      - to_ball.y as f32 * f32::sin((robot_self.orientation as f32).to_radians()),
   };
 
-  msg = raw_move_towards(msg, self_pos, ball_pos, intersection_point);
+  msg = raw_move_towards(msg, self_pos, intersection_point);
   // Stay still, when ball is moving towards the robot
-  info!("{:?}", distance_point_to_ray(self_pos, ray_ball));
-  if distance_point_to_ray(self_pos, ray_ball) < 400f32 {
-    msg.speed = (ball_vel.norm() - 1000f32).max(1f32) as u16;
+  match distance_vec2f(self_pos, ball_pos) {
+    d if (d < 300f32) && (trans_vector.x.abs() < 40f32) => msg.speed = 0,
+    // d if d < 300f32 => msg.speed = (ball_vel.norm() - self_vel.norm() - 250f32).max(60f32) as u16,
+    _ => {}
   }
-
 
   msg
 }
@@ -205,8 +212,13 @@ pub fn ray_circle_exit(ray: Ray, circle: Circle) -> Option<Vec2f> {
 
   let dir = {
     let len = ray.direction.norm();
-    if len == 0f32 { return None; }
-    Vec2f { x: ray.direction.x / len, y: ray.direction.y / len }
+    if len == 0f32 {
+      return None;
+    }
+    Vec2f {
+      x: ray.direction.x / len,
+      y: ray.direction.y / len,
+    }
   };
 
   let oc = Vec2f {
@@ -228,17 +240,14 @@ pub fn ray_circle_exit(ray: Ray, circle: Circle) -> Option<Vec2f> {
   })
 }
 
-pub(crate) fn distance_point_to_ray(
-  point: Vec2f,
-  ray: Ray
-) -> f32 {
-  let v = ray.origin - point;
-  let t = v.dot(ray.direction) / ray.direction.norm_squared();
-
-  if t <= 0f32 {
-    v.norm()
-  } else {
-    let closest = ray.direction.scale(t);
-    (point - closest).norm()
-  }
-}
+// pub(crate) fn distance_point_to_ray(point: Vec2f, ray: Ray) -> f32 {
+//   let v = ray.origin - point;
+//   let t = v.dot(ray.direction) / ray.direction.norm_squared();
+//
+//   if t <= 0f32 {
+//     v.norm()
+//   } else {
+//     let closest = ray.direction.scale(t);
+//     (point - closest).norm()
+//   }
+// }

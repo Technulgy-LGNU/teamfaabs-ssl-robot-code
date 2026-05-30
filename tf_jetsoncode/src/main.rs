@@ -3,7 +3,6 @@ use crate::communication::{communication_receiver, send_flags};
 use crate::proto::RobotCp;
 use crate::robot_logic::command;
 use crate::robot_logic::goalie::goalie;
-use crate::robot_logic::helpers::distance_cpv;
 use std::time::Duration;
 use tracing::info;
 

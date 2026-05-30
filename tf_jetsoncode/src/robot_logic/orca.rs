@@ -3,7 +3,6 @@ use crate::config::Config;
 use crate::proto::{CpRobot, CpTrackedRobot, CpVector2};
 use crate::robot_logic::helpers::Vec2f;
 use crate::{DEFAULT_ACCEL_MM_S2, DEFAULT_DECEL_MM_S2};
-use std::ops::Add;
 
 const DEFAULT_DT_S: f32 = 0.004;
 const DEFAULT_MAX_SPEED_MM_S: f32 = 6000f32;

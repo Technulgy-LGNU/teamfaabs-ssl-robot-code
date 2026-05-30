@@ -4,12 +4,10 @@ use crate::config;
 use crate::proto::CpVector2;
 
 // If we are inside this distance in the penalty area, stop using raw motion.
-pub(crate) const RAW_STOP_RADIUS_MM: f32 = 40.0;
+pub(crate) const RAW_STOP_RADIUS_MM: f32 = 40f32;
 // Maximum translational speed for raw goalie movement inside the penalty area.
 // ToDo: Needs to be higher
-pub(crate) const RAW_MAX_SPEED_MM_S: f32 = 2_000.0;
-// Look ahead time - used for receiving the ball
-pub(crate) const LOOK_AHEAD_TIME: f32 = 2.0;
+pub(crate) const RAW_MAX_SPEED_MM_S: f32 = 2_000f32;
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct Vec2i {
@@ -27,28 +25,11 @@ impl Vec2i {
   }
 
   #[inline]
-  pub(crate) fn new_from_cp(v: CpVector2) -> Vec2i {
-    Self::new(v.x, v.y)
-  }
-
-  #[inline]
-  pub(crate) fn vec2i_length(&self) -> f32 {
-    let x = self.x as f32;
-    let y = self.y as f32;
-    (x * x + y * y).sqrt()
-  }
-
-  #[inline]
   pub fn calculate_vector_2i(a: CpVector2, b: CpVector2) -> Vec2i {
     Self::new (
       a.x - b.x,
       a.y - b.y,
     )
-  }
-
-  #[inline]
-  pub(crate) fn vec2i_to_f32(self) -> (f32, f32) {
-    (self.x as f32, self.y as f32)
   }
 }
 
@@ -73,14 +54,10 @@ impl Vec2f {
     Self::new(v.x as f32, v.y as f32)
   }
 
-  pub(crate) fn new_from_vec2i(v: Vec2i) -> Vec2f {
-    Self::new(v.x as f32, v.y as f32)
-  }
-
-  #[inline]
-  pub(crate) fn norm_squared(&self) -> f32 {
-    self.x * self.x + self.y * self.y
-  }
+  // #[inline]
+  // pub(crate) fn norm_squared(&self) -> f32 {
+  //   self.x * self.x + self.y * self.y
+  // }
 
   #[inline]
   pub(crate) fn norm(self) -> f32 {
@@ -91,9 +68,9 @@ impl Vec2f {
   pub(crate) fn normalize(self) -> Vec2f {
     let n = self.norm();
     if n <= 1e-6 {
-      Self::new(0.0, 0.0)
+      Self::new(0f32, 0f32)
     } else {
-      self.scale(1.0 / n)
+      self.scale(1f32 / n)
     }
   }
 
@@ -103,18 +80,18 @@ impl Vec2f {
   }
 
   /// Scalar Product
-  #[inline]
-  pub(crate) fn dot(self, other: Vec2f) -> f32 {
-    self.x * other.x + self.y * other.y
-  }
-
-  #[inline]
-  pub(crate) fn calculate_vector_2f(a: CpVector2, b: CpVector2) -> Vec2f {
-    Self::new(
-      (a.x - b.x) as f32,
-      (a.y - b.y) as f32,
-    )
-  }
+  // #[inline]
+  // pub(crate) fn dot(self, other: Vec2f) -> f32 {
+  //   self.x * other.x + self.y * other.y
+  // }
+  //
+  // #[inline]
+  // pub(crate) fn calculate_vector_2f(a: CpVector2, b: CpVector2) -> Vec2f {
+  //   Self::new(
+  //     (a.x - b.x) as f32,
+  //     (a.y - b.y) as f32,
+  //   )
+  // }
 
   #[inline]
   pub(crate) fn vec2f_to_cp(self) -> CpVector2 {
@@ -127,13 +104,13 @@ impl Vec2f {
   #[inline]
   pub(crate) fn angle_to_u16(self) -> u16 {
     let mut deg = self.y.atan2(self.x).to_degrees();
-    while deg < 0.0 {
-      deg += 360.0;
+    while deg < 0f32 {
+      deg += 360f32;
     }
-    while deg >= 360.0 {
-      deg -= 360.0;
+    while deg >= 360f32 {
+      deg -= 360f32;
     }
-    deg.round().clamp(0.0, 359.0) as u16
+    deg.round().clamp(0f32, 359f32) as u16
   }
 }
 
@@ -182,19 +159,13 @@ pub(crate) fn distance_cpv(a: CpVector2, b: CpVector2) -> f32 {
 
 #[inline]
 pub(crate) fn distance_vec2f(a: Vec2f, b: Vec2f) -> f32 {
-  (a.x * b.x + a.y * b.y).sqrt()
-}
-
-#[inline]
-pub(crate) fn cp_length(v: CpVector2) -> f32 {
-  let x = v.x as f32;
-  let y = v.y as f32;
-  (x * x + y * y).sqrt()
+  let c : Vec2f = Vec2f::new(a.x - b.x, a.y - b.y);
+  c.norm()
 }
 
 #[inline]
 pub(crate) fn lerp(a: f32, b: f32, t: f32) -> f32 {
-  a + (b - a) * t.clamp(0.0, 1.0)
+  a + (b - a) * t.clamp(0f32, 1f32)
 }
 
 #[inline]
@@ -209,7 +180,7 @@ pub(crate) fn own_goal_x(cfg: &config::Config) -> f32 {
 
 #[inline]
 pub(crate) fn own_goal_side(cfg: &config::Config) -> f32 {
-  if cfg.robot_goal { -1.0 } else { 1.0 }
+  if cfg.robot_goal { -1f32 } else { 1f32 }
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -225,26 +196,15 @@ pub(crate) struct Ray {
   pub direction: Vec2f,
 }
 
-/// All intersection points a ray has with a circle.
-#[derive(Debug, PartialEq)]
-pub(crate) enum RayCircleIntersection {
-  /// The ray misses the circle entirely.
-  None,
-  /// The ray is tangent to the circle (one touch point).
-  Tangent(Vec2f),
-  /// The ray crosses the circle (two points, ordered nearest-first).
-  TwoPoints(Vec2f, Vec2f),
-}
-
 #[inline]
 pub(crate) fn inside_own_penalty_area(cfg: &config::Config, pos: Vec2f) -> bool {
   let goal_x = own_goal_x(cfg);
   let goal_side = own_goal_side(cfg);
-  let penalty_depth = cfg.field.penalty_area_height_mm().max(1.0);
+  let penalty_depth = cfg.field.penalty_area_height_mm().max(1f32);
   let penalty_outer_x = goal_x - goal_side * penalty_depth;
   let x_min = goal_x.min(penalty_outer_x);
   let x_max = goal_x.max(penalty_outer_x);
-  let y_half = cfg.field.penalty_area_width_mm().max(1.0) * 0.5;
+  let y_half = cfg.field.penalty_area_width_mm().max(1f32) * 0.5;
 
   pos.x >= x_min && pos.x <= x_max && pos.y >= -y_half && pos.y <= y_half
 }
@@ -254,21 +214,21 @@ pub(crate) fn clamp_to_own_penalty(cfg: &config::Config, point: Vec2f) -> Vec2f 
   let goal_x = own_goal_x(cfg);
   let goal_side = own_goal_side(cfg);
   // Clamp the target to the part of the penalty area we want the goalie to use.
-  let penalty_depth = cfg.field.penalty_area_height_mm().max(1.0);
+  let penalty_depth = cfg.field.penalty_area_height_mm().max(1f32);
   let penalty_outer_x = goal_x - goal_side * penalty_depth;
   let x_min = goal_x.min(penalty_outer_x);
   let x_max = goal_x.max(penalty_outer_x);
-  let y_half = cfg.field.penalty_area_width_mm().max(1.0) * 0.5;
+  let y_half = cfg.field.penalty_area_width_mm().max(1f32) * 0.5;
 
   Vec2f::new(
-    point.x.clamp(x_min + 40.0, x_max - 40.0),
-    point.y.clamp(-y_half + 40.0, y_half - 40.0),
+    point.x.clamp(x_min + 40f32, x_max - 40f32),
+    point.y.clamp(-y_half + 40f32, y_half - 40f32),
   )
 }
 
 #[inline]
 pub(crate) fn raw_move_towards(
-  msg: TeensySendMsg, self_pos: Vec2f, ball_pos: Vec2f, target: Vec2f,
+  msg: TeensySendMsg, self_pos: Vec2f, target: Vec2f,
 ) -> TeensySendMsg {
   let mut msg = msg;
   // Drive toward the chosen defensive target using raw field-global direction.
@@ -281,25 +241,52 @@ pub(crate) fn raw_move_towards(
     0
   } else {
     // Simple proportional speed scaling, capped for safe goalie motion.
-    (distance * 2.0).clamp(60.0, RAW_MAX_SPEED_MM_S).round() as u16
+    (distance * 2f32).clamp(60f32, RAW_MAX_SPEED_MM_S).round() as u16
   };
-  // Keep looking at the ball while moving.
-  //msg.orient = (ball_pos - self_pos).angle_to_u16();
-  msg.orient = ball_pos.scale(-1f32).angle_to_u16();
 
   msg
 }
 
 mod test {
-  use super::*;
+
+
+  #[test]
+  fn test_vec2f_add() {
+    let a = crate::robot_logic::helpers::Vec2f::new(10f32, 20f32);
+    let b = crate::robot_logic::helpers::Vec2f::new(40f32, 30f32);
+
+    let c = a + b;
+
+    assert_eq!(c, crate::robot_logic::helpers::Vec2f::new(50f32, 50f32));
+  }
 
   #[test]
   fn test_vec2f_sub() {
-    let a = Vec2f::new(10f32, 20f32);
-    let b = Vec2f::new(40f32, 30f32);
+    let a = crate::robot_logic::helpers::Vec2f::new(10f32, 20f32);
+    let b = crate::robot_logic::helpers::Vec2f::new(40f32, 30f32);
 
     let c = a - b;
 
-    assert_eq!(c, Vec2f::new(-30f32, -10f32));
+    assert_eq!(c, crate::robot_logic::helpers::Vec2f::new(-30f32, -10f32));
+  }
+
+  #[test]
+  fn test_vec2f_mul() {
+    let a = crate::robot_logic::helpers::Vec2f::new(10f32, 20f32);
+    let b = crate::robot_logic::helpers::Vec2f::new(40f32, 30f32);
+
+    let c = a * b;
+
+    assert_eq!(c, crate::robot_logic::helpers::Vec2f::new(400f32, 600f32));
+  }
+
+  #[test]
+  fn test_vec2f_div() {
+    let a = crate::robot_logic::helpers::Vec2f::new(10f32, 40f32);
+    let b = crate::robot_logic::helpers::Vec2f::new(50f32, 10f32);
+
+    let c = a / b;
+
+    assert_eq!(c, crate::robot_logic::helpers::Vec2f::new(0.2f32, 4f32));
   }
 }
