@@ -2,12 +2,7 @@ use std::ops::{Add, Div, Mul, Sub};
 use crate::communication::TeensySendMsg;
 use crate::config;
 use crate::proto::CpVector2;
-
-// If we are inside this distance in the penalty area, stop using raw motion.
-pub(crate) const RAW_STOP_RADIUS_MM: f32 = 40f32;
-// Maximum translational speed for raw goalie movement inside the penalty area.
-// ToDo: Needs to be higher
-pub(crate) const RAW_MAX_SPEED_MM_S: f32 = 2_000f32;
+pub(crate) use crate::robot_logic::{RAW_MAX_SPEED_MM_S, RAW_STOP_RADIUS_MM};
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct Vec2i {

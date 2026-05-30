@@ -11,6 +11,12 @@ pub mod goalie;
 pub mod helpers;
 pub mod orca;
 
+// If we are inside this distance in the penalty area, stop using raw motion.
+pub(crate) const RAW_STOP_RADIUS_MM: f32 = 40f32;
+// Maximum translational speed for raw goalie movement inside the penalty area.
+// ToDo: Needs to be higher
+pub(crate) const RAW_MAX_SPEED_MM_S: f32 = 4_000f32;
+
 #[inline]
 pub async fn command(
   cfg: &config::Config, cp_data: &CpRobot, vision_data: &VisionMsg, mut msg: TeensySendMsg,

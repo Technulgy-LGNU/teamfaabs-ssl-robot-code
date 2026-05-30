@@ -161,31 +161,25 @@ fn compute_vector_angle(x_c: f32, y_c: f32, r: f32, x: f32, y: f32) -> f32 {
 pub(crate) fn receive_ball(
   cp_data: &CpRobot, robot_self: CpTrackedRobot, _vision: &VisionMsg, mut msg: TeensySendMsg,
 ) -> TeensySendMsg {
-  let self_pos = Vec2f::new_from_cp(robot_self.pos);
+  let robot_pos = Vec2f::new_from_cp(robot_self.pos);
   let ball_pos = Vec2f::new_from_cp(cp_data.ball.pos);
   let ball_vel = Vec2f::new_from_cp(cp_data.ball.vel.unwrap_or_default());
 
 
   // Check if ball is even moving towards robot
-  if !is_moving_towards(ball_pos, ball_vel, self_pos) {
+  if !is_moving_towards(ball_pos, ball_vel, robot_pos, 2000f32) {
     msg.speed = 0;
     return msg
   }
-  // let interception_point = match intercept_ball(ball_pos, ball_vel, self_pos) {
-  //   Some(point) => point,
-  //   None => {
-  //     self_pos
-  //   }
-  // };
-  let forward = (ball_pos - self_pos).normalized();
-  let interception_point = match intercept_with_constraints(self_pos, forward, ball_pos, ball_vel) {
+  let forward = (ball_pos - robot_pos).normalized();
+  let interception_point = match intercept_with_constraints(robot_pos, forward, ball_pos, ball_vel) {
     Some(point) => point,
     None => {
-      self_pos
+      robot_pos
     }
   };
-  msg = raw_move_towards(msg, self_pos, interception_point);
-  if distance_vec2f(self_pos, ball_pos) <= 100f32 {
+  msg = raw_move_towards(msg, robot_pos, interception_point);
+  if distance_vec2f(robot_pos, ball_pos) <= 100f32 {
     msg.speed = 0;
   }
 
@@ -199,9 +193,9 @@ fn intercept_with_constraints(
   ball_pos: Vec2f,
   ball_vel: Vec2f,
 ) -> Option<Vec2f> {
-  let max_t = 10.0; // horizon in seconds (tune)
+  let max_t = 10f32; // horizon in seconds (tune)
 
-  let mut lo = 0.0;
+  let mut lo = 0f32;
   let mut hi = max_t;
 
   let mut best: Option<(f32, Vec2f)> = None;
@@ -214,7 +208,7 @@ fn intercept_with_constraints(
     let to_ball = ball_p - robot_pos;
 
     // reject "front" targets
-    if to_ball.dot(forward) > 0.0 {
+    if to_ball.dot(forward) > 0f32 {
       lo = mid;
       continue;
     }
@@ -225,7 +219,7 @@ fn intercept_with_constraints(
 
     let diff = robot_time - mid;
 
-    if diff <= 0.0 {
+    if diff <= 0f32 {
       best = Some((mid, ball_p));
       hi = mid;
     } else {
@@ -238,31 +232,32 @@ fn intercept_with_constraints(
 
 #[inline]
 fn speed_from_distance(dist: f32) -> f32 {
-  (dist * 3.0).clamp(60.0, RAW_MAX_SPEED_MM_S)
+  (dist * 3f32).clamp(60f32, RAW_MAX_SPEED_MM_S)
 }
 
 #[inline]
-fn robot_can_reach(
-  robot_pos: Vec2f,
-  target: Vec2f,
-) -> bool {
-  let d = target - robot_pos;
-  let dist = d.norm_squared().sqrt();
-
-  let speed = speed_from_distance(dist);
-
-  let time_needed = dist / speed;
-
-  // "reachable at time t" is checked outside
-  time_needed <= 1.0 // placeholder scaling; overridden in search
-}
-
-#[inline]
-pub(crate) fn is_moving_towards(
+fn is_moving_towards(
   ball_pos: Vec2f,
   ball_vel: Vec2f,
   robot_pos: Vec2f,
+  intercept_radius: f32,
 ) -> bool {
-  let to_robot = robot_pos - ball_pos;
-  to_robot.dot(ball_vel) > 0.0
+  let v2 = ball_vel.norm_squared();
+
+  if v2 < 1e-6 {
+    return false;
+  }
+
+  let t = (robot_pos - ball_pos).dot(ball_vel) / v2;
+
+  if t < -0.5 {
+    return false; // closest approach already passed far in the past
+  }
+
+  let closest = ball_pos + ball_vel * t;
+
+  let dist_sq = (closest - robot_pos).norm_squared();
+
+  dist_sq <= intercept_radius * intercept_radius
 }
+
