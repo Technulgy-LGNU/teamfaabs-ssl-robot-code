@@ -3,7 +3,7 @@ use crate::config;
 use crate::proto::{CpRobot, CpTrackedRobot};
 use crate::robot_logic::ball_logic::{get_ball, receive_ball};
 use crate::robot_logic::goalie::goalie;
-use crate::robot_logic::helpers::distance_cpv;
+use crate::robot_logic::helpers::{Vec2f, distance_cpv};
 use crate::robot_logic::orca::OrcaOptions;
 use tracing::info;
 
@@ -17,6 +17,12 @@ pub async fn command(
   cfg: &config::Config, cp_data: &CpRobot, vision_data: &VisionMsg, mut msg: TeensySendMsg,
   stop: bool, robot_self: CpTrackedRobot,
 ) -> TeensySendMsg {
+  // Vars
+  // let robot_pos = Vec2f::new_from_cp(robot_self.pos);
+  // let robot_vel = Vec2f::new_from_cp(robot_self.vel.unwrap_or_default());
+  // let ball_pos = Vec2f::new_from_cp(cp_data.ball.pos);
+  let ball_vel = Vec2f::new_from_cp(cp_data.ball.vel.unwrap_or_default());
+
   match cp_data.cmd.task {
     0 => {
       // UNKNOWN
@@ -79,11 +85,14 @@ pub async fn command(
     }
     4 => {
       // Rec Kick
-      if distance_cpv(cp_data.ball.pos, robot_self.pos) > 120f32 {
+      if ball_vel.norm() >= 200f32 {
         msg = receive_ball(cp_data, robot_self, vision_data, msg);
       } else {
         msg.speed = 0;
       }
+      // Always enable dribbler
+      msg.set_flag(send_flags::DRIBBLER);
+      msg.dribbler_pwr = 200;
     }
     5 => {
       // Steal Ball

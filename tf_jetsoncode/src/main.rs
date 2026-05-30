@@ -109,10 +109,14 @@ async fn main() {
       }
     }
 
-    info!("\x1b[32m=================\x1b[0m");
-    info!("Incoming CP_Data: {:?}", cp_data);
-    info!("\x1b[32m=================\x1b[0m");
+    // info!("\x1b[32m=================\x1b[0m");
+    // info!("Incoming CP_Data: {:?}", cp_data);
+    // info!("\x1b[32m=================\x1b[0m");
 
+    // Clear all flags
+    robot_msg.clear_all_flags();
+
+    // Correctly produce right self_orient, for calibration
     let mut orient = robot_self.orientation % 360;
     while orient.is_negative() {
       orient += 360;
@@ -138,8 +142,6 @@ async fn main() {
         robot_msg.orient = cp_data.cmd.orientation.unwrap_or_default() as u16;
       }
       3 => {
-        // Clear Flags
-        robot_msg.clear_all_flags();
         // Free to listen to commands
         robot_msg = command(
           &config,
@@ -172,13 +174,16 @@ async fn main() {
     robot_msg.vel_y = robot_self.vel.unwrap_or_default().y as i16;
 
     // Print data for testing
-    info!("Direction: {:?}", robot_msg.dir);
-    info!("Speed: {:?}", robot_msg.speed);
-    info!(
-      "Orientation: {:?}:{:?}",
-      robot_msg.orient, cp_data.cmd.orientation
-    );
-    info!("Self Dir: {:?}", robot_msg.self_orient);
+    // info!("Direction: {:?}", robot_msg.dir);
+    // info!("Speed: {:?}", robot_msg.speed);
+    // info!(
+    //   "Orientation: {:?}:{:?}",
+    //   robot_msg.orient, cp_data.cmd.orientation
+    // );
+    // info!("Self Dir: {:?}", robot_msg.self_orient);
+
+    // Print flags
+    // info!("{:?}", robot_msg.flags.to_le_bytes().iter().copied().collect::<Vec<_>>());
 
     // Print Self velocity in mm/s
     //info!("Self Velocity: {:?}", ((robot_self.vel.unwrap_or_default().x*robot_self.vel.unwrap_or_default().x+robot_self.vel.unwrap_or_default().y*robot_self.vel.unwrap_or_default().y) as f32).sqrt());

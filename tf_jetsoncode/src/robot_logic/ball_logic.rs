@@ -1,9 +1,10 @@
-use crate::communication::{TeensySendMsg, VisionMsg};
+use crate::communication::{send_flags, TeensySendMsg, VisionMsg};
 use crate::config::Config;
 use crate::proto::{CpRobot, CpTrackedRobot};
 use crate::robot_logic::helpers::{distance_cpv, raw_move_towards, Circle, Ray, Vec2f, Vec2i};
 use crate::robot_logic::orca::{self, OrcaOptions};
 use std::f32::consts::PI;
+use tracing::info;
 
 /// Function drives near the ball with orca and then tries to get the ball using Junior code
 #[inline]
@@ -180,11 +181,13 @@ pub fn receive_ball(
     }
   };
 
-
-  // Check if ball is at the robot in the next two seconds and stop
-  let d = self_pos - ball_pos;
-  let t = (d * ball_vel) / ball_vel.length_squared();
   msg = raw_move_towards(msg, self_pos, ball_pos, intersection_point);
+  // Stay still, when ball is moving towards the robot
+  info!("{:?}", distance_point_to_ray(self_pos, ray_ball));
+  if distance_point_to_ray(self_pos, ray_ball) < 400f32 {
+    msg.speed = (ball_vel.norm() - 1000f32).max(1f32) as u16;
+  }
+
 
   msg
 }
@@ -201,7 +204,7 @@ pub fn ray_circle_exit(ray: Ray, circle: Circle) -> Option<Vec2f> {
   );
 
   let dir = {
-    let len = (ray.direction.x * ray.direction.x + ray.direction.y * ray.direction.y).sqrt();
+    let len = ray.direction.norm();
     if len == 0f32 { return None; }
     Vec2f { x: ray.direction.x / len, y: ray.direction.y / len }
   };
@@ -225,3 +228,17 @@ pub fn ray_circle_exit(ray: Ray, circle: Circle) -> Option<Vec2f> {
   })
 }
 
+pub(crate) fn distance_point_to_ray(
+  point: Vec2f,
+  ray: Ray
+) -> f32 {
+  let v = ray.origin - point;
+  let t = v.dot(ray.direction) / ray.direction.norm_squared();
+
+  if t <= 0f32 {
+    v.norm()
+  } else {
+    let closest = ray.direction.scale(t);
+    (point - closest).norm()
+  }
+}

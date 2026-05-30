@@ -1,4 +1,4 @@
-use std::ops::{Add, Mul, Sub};
+use std::ops::{Add, Div, Mul, Sub};
 use crate::communication::TeensySendMsg;
 use crate::config;
 use crate::proto::CpVector2;
@@ -45,6 +45,11 @@ impl Vec2i {
       a.y - b.y,
     )
   }
+
+  #[inline]
+  pub(crate) fn vec2i_to_f32(self) -> (f32, f32) {
+    (self.x as f32, self.y as f32)
+  }
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq)]
@@ -73,7 +78,7 @@ impl Vec2f {
   }
 
   #[inline]
-  pub(crate) fn length_squared(&self) -> f32 {
+  pub(crate) fn norm_squared(&self) -> f32 {
     self.x * self.x + self.y * self.y
   }
 
@@ -95,6 +100,12 @@ impl Vec2f {
   #[inline]
   pub(crate) fn scale(self, s: f32) -> Vec2f {
     Self::new(self.x * s, self.y * s)
+  }
+
+  /// Scalar Product
+  #[inline]
+  pub(crate) fn dot(self, other: Vec2f) -> f32 {
+    self.x * other.x + self.y * other.y
   }
 
   #[inline]
@@ -128,7 +139,7 @@ impl Vec2f {
 
 impl Add for Vec2f {
   type Output = Vec2f;
-  
+
   fn add(self, rhs: Self) -> Self::Output {
     Vec2f::new(self.x + rhs.x, self.y + rhs.y)
   }
@@ -147,35 +158,58 @@ impl Sub for Vec2f {
 }
 
 impl Mul for Vec2f {
-  type Output = f32;
+  type Output = Vec2f;
 
   fn mul(self, rhs: Self) -> Self::Output {
-    self.x * rhs.x + self.y * rhs.x
+    Vec2f::new(self.x * rhs.x, self.y * rhs.y)
+  }
+}
+
+impl Div for Vec2f {
+  type Output = Vec2f;
+
+  fn div(self, rhs: Self) -> Self::Output {
+    Vec2f::new(self.x / rhs.x, self.y / rhs.y)
   }
 }
 
 #[inline]
-pub fn distance_cpv(a: CpVector2, b: CpVector2) -> f32 {
+pub(crate) fn distance_cpv(a: CpVector2, b: CpVector2) -> f32 {
   let dx = (a.x - b.x) as f32;
   let dy = (a.y - b.y) as f32;
   (dx * dx + dy * dy).sqrt()
 }
 
 #[inline]
-pub fn cp_length(v: CpVector2) -> f32 {
+pub(crate) fn distance_vec2f(a: Vec2f, b: Vec2f) -> f32 {
+  (a.x * b.x + a.y * b.y).sqrt()
+}
+
+#[inline]
+pub(crate) fn cp_length(v: CpVector2) -> f32 {
   let x = v.x as f32;
   let y = v.y as f32;
   (x * x + y * y).sqrt()
 }
 
 #[inline]
-pub fn vec2i_to_f32(v: Vec2i) -> (f32, f32) {
-  (v.x as f32, v.y as f32)
+pub(crate) fn lerp(a: f32, b: f32, t: f32) -> f32 {
+  a + (b - a) * t.clamp(0.0, 1.0)
 }
 
 #[inline]
-pub(crate) fn lerp(a: f32, b: f32, t: f32) -> f32 {
-  a + (b - a) * t.clamp(0.0, 1.0)
+pub(crate) fn own_goal_x(cfg: &config::Config) -> f32 {
+  let half_length = cfg.field.width_mm() * 0.5;
+  if cfg.robot_goal {
+    -half_length
+  } else {
+    half_length
+  }
+}
+
+#[inline]
+pub(crate) fn own_goal_side(cfg: &config::Config) -> f32 {
+  if cfg.robot_goal { -1.0 } else { 1.0 }
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -203,21 +237,6 @@ pub(crate) enum RayCircleIntersection {
 }
 
 #[inline]
-pub(crate) fn own_goal_x(cfg: &config::Config) -> f32 {
-  let half_length = cfg.field.width_mm() * 0.5;
-  if cfg.robot_goal {
-    -half_length
-  } else {
-    half_length
-  }
-}
-
-#[inline]
-pub(crate) fn own_goal_side(cfg: &config::Config) -> f32 {
-  if cfg.robot_goal { -1.0 } else { 1.0 }
-}
-
-#[inline]
 pub(crate) fn inside_own_penalty_area(cfg: &config::Config, pos: Vec2f) -> bool {
   let goal_x = own_goal_x(cfg);
   let goal_side = own_goal_side(cfg);
@@ -228,29 +247,6 @@ pub(crate) fn inside_own_penalty_area(cfg: &config::Config, pos: Vec2f) -> bool 
   let y_half = cfg.field.penalty_area_width_mm().max(1.0) * 0.5;
 
   pos.x >= x_min && pos.x <= x_max && pos.y >= -y_half && pos.y <= y_half
-}
-
-#[inline]
-pub(crate) fn clamp_outside_own_penalty(cfg: &config::Config, point: Vec2f) -> Vec2f {
-  let goal_x = own_goal_x(cfg);
-  let goal_side = own_goal_side(cfg);
-  let penalty_depth = cfg.field.penalty_area_height_mm().max(1.0);
-  let penalty_outer_x = goal_x - goal_side * penalty_depth;
-  let y_half = cfg.field.penalty_area_width_mm().max(1.0) * 0.5;
-  let safety_margin = 40.0;
-
-  let x = if goal_side > 0.0 {
-    point.x.min(penalty_outer_x - safety_margin)
-  } else {
-    point.x.max(penalty_outer_x + safety_margin)
-  };
-
-  Vec2f::new(
-    x,
-    point
-      .y
-      .clamp(-y_half + safety_margin, y_half - safety_margin),
-  )
 }
 
 #[inline]
@@ -288,7 +284,22 @@ pub(crate) fn raw_move_towards(
     (distance * 2.0).clamp(60.0, RAW_MAX_SPEED_MM_S).round() as u16
   };
   // Keep looking at the ball while moving.
-  msg.orient = (ball_pos - self_pos).angle_to_u16();
+  //msg.orient = (ball_pos - self_pos).angle_to_u16();
+  msg.orient = ball_pos.scale(-1f32).angle_to_u16();
 
   msg
+}
+
+mod test {
+  use super::*;
+
+  #[test]
+  fn test_vec2f_sub() {
+    let a = Vec2f::new(10f32, 20f32);
+    let b = Vec2f::new(40f32, 30f32);
+
+    let c = a - b;
+
+    assert_eq!(c, Vec2f::new(-30f32, -10f32));
+  }
 }
