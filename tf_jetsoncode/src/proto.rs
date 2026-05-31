@@ -11,17 +11,20 @@ pub struct CpBall {
 /// A single tracked robot
 #[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct CpTrackedRobot {
-  #[prost(uint32, required, tag = "1")]
+  #[prost(uint32, required, tag="1")]
   pub robot_id: u32,
-  /// The position \[m,\] in the ssl-vision coordinate system
-  #[prost(message, required, tag = "2")]
+  /// The position \[mm\] in the ssl-vision coordinate system
+  #[prost(message, required, tag="2")]
   pub pos: CpVector2,
-  /// The orientation \[rad\] in the ssl-vision coordinate system
-  #[prost(int32, required, tag = "3")]
+  /// The orientation \[degree\] in the ssl-vision coordinate system
+  #[prost(int32, required, tag="3")]
   pub orientation: i32,
   /// The velocity \[m/s\] in the ssl-vision coordinate system
-  #[prost(message, optional, tag = "4")]
-  pub vel: Option<CpVector2>,
+  #[prost(message, optional, tag="4")]
+  pub vel: ::core::option::Option<CpVector2>,
+  /// The visibility, 0 means not visible, 255 means fully visible, the rest is in between
+  #[prost(uint32, required, tag="5")]
+  pub visibility: u32,
 }
 #[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct CpVector2 {
@@ -55,20 +58,22 @@ pub struct CpRobot {
 /// The commands as enums and the fields are for stuff like drive to position and kick
 #[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct CpCommand {
-  #[prost(enumeration = "CpState", required, tag = "1")]
+  #[prost(enumeration="CpState", required, tag="1")]
   pub state: i32,
-  #[prost(enumeration = "CpTask", required, tag = "2")]
+  #[prost(enumeration="CpTask", required, tag="2")]
   pub task: i32,
-  #[prost(message, optional, tag = "3")]
-  pub pos: Option<CpVector2>,
-  #[prost(uint32, optional, tag = "4")]
-  pub speed: Option<u32>,
-  #[prost(uint32, optional, tag = "5")]
-  pub orientation: Option<u32>,
-  #[prost(uint32, optional, tag = "6")]
-  pub kick_orient: Option<u32>,
-  #[prost(uint32, optional, tag = "7")]
-  pub kick_speed: Option<u32>,
+  #[prost(message, optional, tag="3")]
+  pub pos: ::core::option::Option<CpVector2>,
+  #[prost(uint32, optional, tag="4")]
+  pub speed: ::core::option::Option<u32>,
+  #[prost(uint32, optional, tag="5")]
+  pub orientation: ::core::option::Option<u32>,
+  #[prost(uint32, optional, tag="6")]
+  pub kick_orient: ::core::option::Option<u32>,
+  #[prost(uint32, optional, tag="7")]
+  pub kick_speed: ::core::option::Option<u32>,
+  #[prost(uint32, optional, tag="8")]
+  pub enemy_id: ::core::option::Option<u32>,
 }
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, prost::Enumeration)]
 #[repr(i32)]
@@ -116,7 +121,7 @@ impl CpState {
     }
   }
 }
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, prost::Enumeration)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
 #[repr(i32)]
 pub enum CpTask {
   TaskUnspecified = 0,
@@ -135,6 +140,8 @@ pub enum CpTask {
   TaskDribble = 6,
   /// Get the ball and move it to the CP_Command::pos position
   TaskPosBall = 7,
+  /// Moves the robot between the ball and an enemy, defined with the CP_Command::enemy_id value
+  TaskBlock = 8,
   /// This robot should do a kickoff, basically kick the ball in the CP_Command::kick_orient direction, but adhere to the kickoff rules
   StateKickoff = 9,
   /// Free Kick, use the CP_Command::kick_orientation direction
@@ -155,6 +162,7 @@ impl CpTask {
       Self::TaskSteal => "TASK_STEAL",
       Self::TaskDribble => "TASK_DRIBBLE",
       Self::TaskPosBall => "TASK_PosBall",
+      Self::TaskBlock => "TASK_BLOCK",
       Self::StateKickoff => "STATE_KICKOFF",
       Self::StateFreekick => "STATE_FREEKICK",
     }

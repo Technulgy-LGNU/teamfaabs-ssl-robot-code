@@ -1,8 +1,8 @@
-use std::ops::{Add, Div, Mul, Sub};
 use crate::communication::TeensySendMsg;
 use crate::config;
 use crate::proto::CpVector2;
 pub(crate) use crate::robot_logic::{RAW_MAX_SPEED_MM_S, RAW_STOP_RADIUS_MM};
+use std::ops::{Add, Div, Mul, Sub};
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct Vec2i {
@@ -199,6 +199,13 @@ pub(crate) fn inside_own_penalty_area(cfg: &config::Config, pos: Vec2f) -> bool 
   let y_half = cfg.field.penalty_area_width_mm().max(1f32) * 0.5;
 
   pos.x >= x_min && pos.x <= x_max && pos.y >= -y_half && pos.y <= y_half
+}
+
+pub(crate) fn inside_field(cfg: &config::Config, pos: Vec2f) -> bool {
+  let x_half = cfg.field.width_mm() * 0.5 + cfg.field.runoff_width_mm();
+  let y_half = cfg.field.height_mm() * 0.5 + cfg.field.runoff_width_mm();
+
+  -pos.x >= x_half && pos.x <= x_half && pos.y >= -y_half && pos.y <= y_half
 }
 
 #[inline]

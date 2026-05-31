@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+use std::os::linux::raw::time_t;
 use crate::communication::send_cp::send_cp;
 use crate::communication::{communication_receiver, send_flags};
 use crate::proto::RobotCp;
@@ -5,6 +7,7 @@ use crate::robot_logic::command;
 use crate::robot_logic::goalie::goalie;
 use std::time::Duration;
 use tracing::info;
+use crate::robot_logic::helpers::{inside_field, Vec2f};
 
 mod communication;
 mod config;
@@ -171,6 +174,11 @@ async fn main() {
     robot_msg.state = cp_data.cmd.state as u8;
     robot_msg.vel_x = robot_self.vel.unwrap_or_default().x as i16;
     robot_msg.vel_y = robot_self.vel.unwrap_or_default().y as i16;
+
+    // Do last check, if robot is out of field, if yes, stop
+    if inside_field(&config, Vec2f::new_from_cp(robot_self.pos)) || robot_self.visibility <= 20 {
+      robot_msg.speed = 0;
+    }
 
     // Print data for testing
     // info!("Direction: {:?}", robot_msg.dir);
