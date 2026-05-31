@@ -155,6 +155,15 @@ impl Div for Vec2f {
   }
 }
 
+impl Div<f32> for Vec2f {
+  type Output = Vec2f;
+
+  #[inline]
+  fn div(self, rhs: f32) -> Self::Output {
+    Vec2f::new(self.x / rhs, self.y / rhs)
+  }
+}
+
 #[inline]
 pub(crate) fn distance_cpv(a: CpVector2, b: CpVector2) -> f32 {
   let dx = (a.x - b.x) as f32;

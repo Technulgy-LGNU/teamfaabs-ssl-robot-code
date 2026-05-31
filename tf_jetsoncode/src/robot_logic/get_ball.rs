@@ -1,19 +1,22 @@
-use std::f32::consts::PI;
-use crate::communication::{TeensySendMsg, VisionMsg};
+use crate::communication::{send_flags, TeensySendMsg, VisionMsg};
 use crate::config::Config;
 use crate::proto::{CpRobot, CpTrackedRobot};
-use crate::robot_logic::helpers::{distance_cpv, Vec2f, Vec2i};
+use crate::robot_logic::helpers::{Vec2f, Vec2i, distance_cpv};
 use crate::robot_logic::orca;
 use crate::robot_logic::orca::OrcaOptions;
+use std::f32::consts::PI;
+
+const MAX_ADD_D: f32 = 0f32; // 220 //300
+const MAX_ADD_A: f32 = 0f32; // 160 //220
+const MIN_BALL_VEL: f32 = 700f32;
 
 /// Function drives near the ball with orca and then tries to get the ball using Junior code
 #[inline]
-pub async fn get_ball(
+pub fn get_ball(
   cfg: &Config, cp_data: &CpRobot, _vision_data: &VisionMsg, mut msg: TeensySendMsg,
   robot_self: CpTrackedRobot,
 ) -> TeensySendMsg {
   let dist = distance_cpv(robot_self.pos, cp_data.ball.pos);
-  println!("Distance to ball: {:?}", dist);
 
   // Check distance to ball, either use orca for long distance or use direct control for taking the ball
   if dist > 500f32 {
@@ -32,20 +35,22 @@ pub async fn get_ball(
     msg = orca::orca_to_teensy(msg, &plan, robot_self);
   } else {
     // Calculate direction to ball as Vec2i
-    let to_ball = Vec2i::calculate_vector_2i(robot_self.pos, cp_data.ball.pos);
+    let ball_pos = Vec2f::new_from_cp(cp_data.ball.pos);
+    let ball_vel = Vec2f::new_from_cp(cp_data.ball.vel.unwrap_or_default());
+    let to_ball = Vec2i::calculate_vector_2i(robot_self.pos, (ball_pos+ball_vel.scale(0.005f32)).vec2f_to_cp());
 
     // Transformation vector with respected input angle
     let trans_vector = Vec2f {
-      x: -to_ball.x as f32 * f32::sin((cp_data.cmd.orientation() as f32).to_radians())
-        + to_ball.y as f32 * f32::cos((cp_data.cmd.orientation() as f32).to_radians()),
-      y: -to_ball.x as f32 * f32::cos((cp_data.cmd.orientation() as f32).to_radians())
-        - to_ball.y as f32 * f32::sin((cp_data.cmd.orientation() as f32).to_radians()),
+      x: -to_ball.x as f32 * f32::sin((robot_self.orientation as f32).to_radians())
+        + to_ball.y as f32 * f32::cos((robot_self.orientation as f32).to_radians()),
+      y: -to_ball.x as f32 * f32::cos((robot_self.orientation as f32).to_radians())
+        - to_ball.y as f32 * f32::sin((robot_self.orientation as f32).to_radians()),
     };
 
     let mut comp_dir: f32;
-    let x_c: f32 = 120f32;
+    let x_c: f32 = 100f32;
     let y_c: f32 = 0f32;
-    let d: f32 = 125f32;
+    let d: f32 = 160f32;
 
     if trans_vector.x < 0f32 {
       comp_dir = compute_vector_angle(x_c, y_c, d, -trans_vector.x, -trans_vector.y).to_degrees();
@@ -54,8 +59,8 @@ pub async fn get_ball(
         180f32 - compute_vector_angle(x_c, y_c, d, trans_vector.x, -trans_vector.y).to_degrees();
     }
 
-    if (trans_vector.x < 15f32)
-      && (trans_vector.x > -15f32)
+    if (trans_vector.x < 25f32)
+      && (trans_vector.x > -25f32)
       && (trans_vector.y < 100f32)
       && (trans_vector.y > 0f32)
     {
@@ -64,16 +69,25 @@ pub async fn get_ball(
 
     comp_dir = comp_dir - 90f32 + robot_self.orientation as f32;
 
-    println!("Computed Direction: {:?}", comp_dir);
-
     while comp_dir.is_sign_negative() {
       comp_dir += 360f32;
     }
 
+    // Speed
+    let abs_ball_angle = 90f32 - trans_vector.y.atan2(trans_vector.x).to_degrees().abs();
+    let help_d_vel = ((trans_vector.norm() * 0.1).powf(4.2) / 70000f32).min(MAX_ADD_D);
+    let help_a_vel = (abs_ball_angle * 0.15).powf(1.3).min(MAX_ADD_A); // 0.15 1.6
+    let target_v = MIN_BALL_VEL + help_d_vel + help_a_vel;
+
     // Set Teensy message
     msg.dir = comp_dir as u16;
-    msg.speed = 300;
+    msg.speed = target_v as u16;
   }
+  // Enable Dribbler
+  msg.set_flag(send_flags::DRIBBLER);
+  msg.dribbler_pwr = 200;
+  // Set orientation
+  msg.orient = cp_data.cmd.orientation.unwrap_or_default() as u16;
   msg
 }
 

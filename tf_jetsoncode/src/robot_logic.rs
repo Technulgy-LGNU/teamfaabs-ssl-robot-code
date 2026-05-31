@@ -106,7 +106,7 @@ pub async fn command(
     }
     5 => {
       // Steal Ball
-      msg = get_ball(cfg, cp_data, vision_data, msg, robot_self).await;
+      msg = get_ball(cfg, cp_data, vision_data, msg, robot_self);
     }
     6 => {
       // Dribble the Ball
