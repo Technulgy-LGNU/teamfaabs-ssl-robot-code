@@ -20,11 +20,69 @@ impl Vec2i {
   }
 
   #[inline]
-  pub fn calculate_vector_2i(a: CpVector2, b: CpVector2) -> Vec2i {
+  pub(crate) fn new_from_cp(v: CpVector2) -> Vec2i {
+    Vec2i::new(v.x, v.y)
+  }
+
+  #[inline]
+  pub(crate) fn from_cp_vec2(v: &CpVector2) -> Self {
+    Self { x: v.x, y: v.y }
+  }
+
+  #[inline]
+  pub(crate) fn norm_squared(self) -> i32 {
+    self.x * self.x + self.y * self.y
+  }
+
+  #[inline]
+  pub(crate) fn calculate_vector_2i(a: CpVector2, b: CpVector2) -> Vec2i {
     Self::new (
       a.x - b.x,
       a.y - b.y,
     )
+  }
+
+  #[inline]
+  pub(crate) fn with_speed_clamped(self, max_speed_mm_s: u32) -> Self {
+    let max_speed = max_speed_mm_s as f64;
+    let vx = self.x as f64;
+    let vy = self.y as f64;
+    let s = (vx * vx + vy * vy).sqrt();
+    if s < 1e-6 {
+      return Self::default();
+    }
+    if s <= max_speed {
+      return self;
+    }
+    let k = max_speed / s;
+    Self {
+      x: (vx * k).round() as i32,
+      y: (vy * k).round() as i32,
+    }
+  }
+}
+
+impl Add for Vec2i {
+  type Output = Vec2i;
+
+  fn add(self, rhs: Vec2i) -> Self::Output {
+    Vec2i::new(self.x.saturating_add(rhs.x), self.y.saturating_add(rhs.y))
+  }
+}
+
+impl Sub for Vec2i {
+  type Output = Vec2i;
+
+  fn sub(self, rhs: Vec2i) -> Self::Output {
+    Vec2i::new(self.x.saturating_sub(rhs.x), self.y.saturating_sub(rhs.y))
+  }
+}
+
+impl Mul<i32> for Vec2i {
+  type Output = Vec2i;
+
+  fn mul(self, rhs: i32) -> Self::Output {
+    Vec2i::new(self.x.saturating_mul(rhs), self.y.saturating_mul(rhs))
   }
 }
 

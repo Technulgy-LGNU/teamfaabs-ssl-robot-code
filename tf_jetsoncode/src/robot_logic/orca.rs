@@ -1,4 +1,4 @@
-//! ORCA (Optimal Reciprocal Collision Avoidance) – *starter* scaffolding.
+//! ORCA (Optimal Reciprocal Collision Avoidance)
 //!
 //! This module is intentionally **high level**:
 //! - It gives you a clean async boundary (`OrcaHandle`) so the rest of your robot code can remain
@@ -23,81 +23,8 @@ use std::time::{Duration, Instant};
 use tokio::sync::watch;
 
 use crate::communication::TeensySendMsg;
-use crate::proto::{CpRobot, CpTrackedRobot, CpVector2};
-
-/// 2D integer vector in millimeters (or millimeters/second, depending on context).
-///
-/// You said “everything is i32”; internally we sometimes upcast to i64 for safety.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
-pub struct Vec2i {
-  pub x: i32,
-  pub y: i32,
-}
-
-impl Vec2i {
-  #[inline]
-  pub const fn new(x: i32, y: i32) -> Self {
-    Self { x, y }
-  }
-
-  pub(crate) fn new_from_cp(v: CpVector2) -> Vec2i {
-    Vec2i::new(v.x, v.y)
-  }
-
-  #[inline]
-  pub fn len_sq_i64(self) -> i64 {
-    let x = self.x as i64;
-    let y = self.y as i64;
-    x * x + y * y
-  }
-
-  #[inline]
-  fn from_cp_vec2(v: &CpVector2) -> Self {
-    Self { x: v.x, y: v.y }
-  }
-
-  /// Scales the vector to a target speed (mm/s) while preserving direction.
-  /// If the vector is ~zero, returns zero.
-  #[inline]
-  pub fn with_speed_clamped(self, max_speed_mm_s: u32) -> Self {
-    let max_speed = max_speed_mm_s as f64;
-    let vx = self.x as f64;
-    let vy = self.y as f64;
-    let s = (vx * vx + vy * vy).sqrt();
-    if s < 1e-6 {
-      return Self::default();
-    }
-    if s <= max_speed {
-      return self;
-    }
-    let k = max_speed / s;
-    Self {
-      x: (vx * k).round() as i32,
-      y: (vy * k).round() as i32,
-    }
-  }
-}
-
-impl std::ops::Add for Vec2i {
-  type Output = Vec2i;
-  fn add(self, rhs: Vec2i) -> Self::Output {
-    Vec2i::new(self.x.saturating_add(rhs.x), self.y.saturating_add(rhs.y))
-  }
-}
-
-impl std::ops::Sub for Vec2i {
-  type Output = Vec2i;
-  fn sub(self, rhs: Vec2i) -> Self::Output {
-    Vec2i::new(self.x.saturating_sub(rhs.x), self.y.saturating_sub(rhs.y))
-  }
-}
-
-impl std::ops::Mul<i32> for Vec2i {
-  type Output = Vec2i;
-  fn mul(self, rhs: i32) -> Self::Output {
-    Vec2i::new(self.x.saturating_mul(rhs), self.y.saturating_mul(rhs))
-  }
-}
+use crate::proto::{CpRobot, CpTrackedRobot};
+pub use crate::robot_logic::helpers::Vec2i;
 
 /// A tracked robot (other agent) as seen in the world model.
 #[derive(Debug, Clone, Copy, Default)]
@@ -137,25 +64,21 @@ impl Default for WorldSnapshot {
 }
 
 impl WorldSnapshot {
-  /// Build a [`WorldSnapshot`] from a CrashPilot world packet.
+  /// Build a [`WorldSnapshot`] from a CrashPilot world packet and the already selected self robot.
   ///
   /// Notes:
   /// - CrashPilot supplies both teams; we simply merge them.
-  /// - We find `self` by `self_id` inside either `robots_yellow` or `robots_blue`.
+  /// - The caller is responsible for providing the correct self robot.
   /// - Units are assumed to already be *millimeters* and *millimeters/second* as described.
-  pub fn from_cp(cp: &CpRobot, self_id: u32, default_robot_radius_mm: u32) -> Self {
-    let (self_pos_mm, self_vel_mm_s, self_orientation) = find_self(cp, self_id)
-      .map(|r| {
-        (
-          Vec2i::from_cp_vec2(&r.pos),
-          r.vel
-            .as_ref()
-            .map(Vec2i::from_cp_vec2)
-            .unwrap_or_default(),
-          Some(r.orientation),
-        )
-      })
-      .unwrap_or((Vec2i::default(), Vec2i::default(), None));
+  pub fn from_cp(cp: &CpRobot, self_robot: &CpTrackedRobot, default_robot_radius_mm: u32) -> Self {
+    let self_id = self_robot.robot_id;
+    let self_pos_mm = Vec2i::from_cp_vec2(&self_robot.pos);
+    let self_vel_mm_s = self_robot
+      .vel
+      .as_ref()
+      .map(Vec2i::from_cp_vec2)
+      .unwrap_or_default();
+    let self_orientation = Some(self_robot.orientation);
 
     let mut others = Vec::with_capacity(cp.robots_yellow.len() + cp.robots_blue.len());
     append_others(&mut others, &cp.robots_yellow, self_id, default_robot_radius_mm);
@@ -170,13 +93,6 @@ impl WorldSnapshot {
       others,
     }
   }
-}
-
-fn find_self(cp: &CpRobot, self_id: u32) -> Option<&CpTrackedRobot> {
-  cp.robots_yellow
-    .iter()
-    .find(|r| r.robot_id == self_id)
-    .or_else(|| cp.robots_blue.iter().find(|r| r.robot_id == self_id))
 }
 
 fn append_others(out: &mut Vec<OtherRobot>, src: &[CpTrackedRobot], self_id: u32, default_radius_mm: u32) {
@@ -254,8 +170,8 @@ pub fn nav_command_to_teensy(mut base: TeensySendMsg, nav: NavCommand) -> Teensy
 /// - dir is integer degrees with 1° resolution.
 /// - speed is magnitude, clamped to `u16::MAX`.
 pub fn vel_to_dir_speed_deg_1(vel_mm_s: Vec2i) -> (u16, u16) {
-  let vx = vel_mm_s.x as f64;
-  let vy = vel_mm_s.y as f64;
+  let vx = vel_mm_s.x as f32;
+  let vy = vel_mm_s.y as f32;
   let speed = (vx * vx + vy * vy).sqrt();
   if speed < 1e-6 {
     return (0, 0);
@@ -267,7 +183,7 @@ pub fn vel_to_dir_speed_deg_1(vel_mm_s: Vec2i) -> (u16, u16) {
   }
   // Wrap just in case numeric conversion yields 360.
   let dir_u16 = (dir.round() as i32).rem_euclid(360) as u16;
-  let speed_u16 = speed.round().clamp(0.0, u16::MAX as f64) as u16;
+  let speed_u16 = speed.round().clamp(0.0, u16::MAX as f32) as u16;
   (dir_u16, speed_u16)
 }
 
@@ -295,7 +211,7 @@ pub struct OrcaParams {
   ///
   /// If you want to be more conservative (treat others as non-cooperative obstacles),
   /// increase this towards 1.0.
-  pub responsibility: f64,
+  pub responsibility: f32,
   /// Maximum change in translational velocity per second.
   pub max_accel_mm_s2: u32,
   /// Maximum change in translational velocity when slowing down per second.
@@ -363,8 +279,8 @@ impl OrcaHandle {
         let start = Instant::now();
         let req_world_time = req.world.now;
         let dt_s = last_world_time
-          .map(|t| req_world_time.saturating_duration_since(t).as_secs_f64())
-          .unwrap_or_else(|| (params.time_step_ms as f64 / 1000.0).max(0.001));
+          .map(|t| req_world_time.saturating_duration_since(t).as_secs_f32())
+          .unwrap_or_else(|| (params.time_step_ms as f32 / 1000f32).max(0.001f32));
 
         // `spawn_blocking` requires a `'static` closure, so capture by value.
         let params = params;
@@ -375,8 +291,8 @@ impl OrcaHandle {
             last_command_vel,
             raw_vel,
             dt_s,
-            params.max_accel_mm_s2 as f64,
-            params.max_decel_mm_s2 as f64,
+            params.max_accel_mm_s2 as f32,
+            params.max_decel_mm_s2 as f32,
           );
           let debug = OrcaDebug {
             preferred_vel_mm_s: preferred,
@@ -455,9 +371,9 @@ fn orca_step(params: &OrcaParams, world: &WorldSnapshot, preferred_vel: Vec2i, m
     return Vec2i::default();
   }
 
-  let max_speed = max_speed_mm_s as f64;
-  let time_horizon = (params.time_horizon_ms as f64 / 1000.0).max(0.01);
-  let time_step = (params.time_step_ms as f64 / 1000.0).max(0.001);
+  let max_speed = max_speed_mm_s as f32;
+  let time_horizon = (params.time_horizon_ms as f32 / 1000.0).max(0.01);
+  let time_step = (params.time_step_ms as f32 / 1000.0).max(0.001);
 
   let self_pos = Vec2::from_i32(world.self_pos_mm);
   let self_vel = Vec2::from_i32(world.self_vel_mm_s);
@@ -477,7 +393,7 @@ fn orca_step(params: &OrcaParams, world: &WorldSnapshot, preferred_vel: Vec2i, m
     .with_speed_clamped(max_speed_mm_s)
 }
 
-fn limit_velocity_change(previous: Vec2i, desired: Vec2i, dt_s: f64, max_accel_mm_s2: f64, max_decel_mm_s2: f64) -> Vec2i {
+fn limit_velocity_change(previous: Vec2i, desired: Vec2i, dt_s: f32, max_accel_mm_s2: f32, max_decel_mm_s2: f32) -> Vec2i {
   if dt_s <= 0.0 {
     return previous;
   }
@@ -506,45 +422,45 @@ fn limit_velocity_change(previous: Vec2i, desired: Vec2i, dt_s: f64, max_accel_m
 }
 
 // -------------------------------------------------------------------------------------------------
-// ORCA math (f64 internally)
+// ORCA math (f32 internally)
 
 #[derive(Debug, Clone, Copy, Default)]
 struct Vec2 {
-  x: f64,
-  y: f64,
+  x: f32,
+  y: f32,
 }
 
 impl Vec2 {
   #[inline]
-  fn new(x: f64, y: f64) -> Self {
+  fn new(x: f32, y: f32) -> Self {
     Self { x, y }
   }
 
   #[inline]
   fn from_i32(v: Vec2i) -> Self {
     Self {
-      x: v.x as f64,
-      y: v.y as f64,
+      x: v.x as f32,
+      y: v.y as f32,
     }
   }
 
   #[inline]
-  fn abs_sq(self) -> f64 {
+  fn abs_sq(self) -> f32 {
     self.x * self.x + self.y * self.y
   }
 
   #[inline]
-  fn abs(self) -> f64 {
+  fn abs(self) -> f32 {
     self.abs_sq().sqrt()
   }
 
   #[inline]
-  fn dot(self, other: Vec2) -> f64 {
+  fn dot(self, other: Vec2) -> f32 {
     self.x * other.x + self.y * other.y
   }
 
   #[inline]
-  fn det(self, other: Vec2) -> f64 {
+  fn det(self, other: Vec2) -> f32 {
     self.x * other.y - self.y * other.x
   }
 
@@ -573,16 +489,16 @@ impl std::ops::Sub for Vec2 {
   }
 }
 
-impl std::ops::Mul<f64> for Vec2 {
+impl std::ops::Mul<f32> for Vec2 {
   type Output = Vec2;
-  fn mul(self, rhs: f64) -> Self::Output {
+  fn mul(self, rhs: f32) -> Self::Output {
     Vec2::new(self.x * rhs, self.y * rhs)
   }
 }
 
-impl std::ops::Div<f64> for Vec2 {
+impl std::ops::Div<f32> for Vec2 {
   type Output = Vec2;
-  fn div(self, rhs: f64) -> Self::Output {
+  fn div(self, rhs: f32) -> Self::Output {
     Vec2::new(self.x / rhs, self.y / rhs)
   }
 }
@@ -616,19 +532,19 @@ fn create_orca_lines(
   self_pos: Vec2,
   self_vel: Vec2,
   world: &WorldSnapshot,
-  time_horizon_s: f64,
-  time_step_s: f64,
+  time_horizon_s: f32,
+  time_step_s: f32,
 ) -> Vec<Line> {
   let inv_time_horizon = 1.0 / time_horizon_s;
   let inv_time_step = 1.0 / time_step_s;
-  let self_radius = params.default_robot_radius_mm as f64;
+  let self_radius = params.default_robot_radius_mm as f32;
 
   let mut lines = Vec::with_capacity(world.others.len());
   for other in &world.others {
     let other_pos = Vec2::from_i32(other.pos_mm);
     let other_vel = Vec2::from_i32(other.vel_mm_s);
-    let other_radius = other.radius_mm as f64;
-    let combined_radius = self_radius + other_radius + params.safety_margin_mm as f64;
+    let other_radius = other.radius_mm as f32;
+    let combined_radius = self_radius + other_radius + params.safety_margin_mm as f32;
 
     let relative_position = other_pos - self_pos;
     let relative_velocity = self_vel - other_vel;
@@ -696,7 +612,7 @@ fn create_orca_lines(
 ///
 /// Returns `None` if numerical issues occur.
 /// Returns the index of the first failing line, or `lines.len()` if feasible.
-fn linear_program_2(lines: &[Line], radius: f64, opt_velocity: Vec2, direction_opt: bool, result: &mut Vec2) -> usize {
+fn linear_program_2(lines: &[Line], radius: f32, opt_velocity: Vec2, direction_opt: bool, result: &mut Vec2) -> usize {
   *result = if direction_opt {
     // Optimize direction: pick point on circle.
     opt_velocity.normalize() * radius
@@ -726,7 +642,7 @@ fn linear_program_2(lines: &[Line], radius: f64, opt_velocity: Vec2, direction_o
   lines.len()
 }
 
-fn linear_program_1(lines: &[Line], line_no: usize, radius: f64, opt_velocity: Vec2, direction_opt: bool) -> Option<Vec2> {
+fn linear_program_1(lines: &[Line], line_no: usize, radius: f32, opt_velocity: Vec2, direction_opt: bool) -> Option<Vec2> {
   let line = lines.get(line_no)?;
   let dot = line.point.dot(line.direction);
   let discriminant = dot * dot + radius * radius - line.point.abs_sq();
@@ -783,7 +699,7 @@ fn linear_program_1(lines: &[Line], line_no: usize, radius: f64, opt_velocity: V
   Some(line.point + line.direction * t)
 }
 
-fn linear_program_3(lines: &[Line], num_obst_lines: usize, begin_line: usize, radius: f64, result: &mut Vec2) {
+fn linear_program_3(lines: &[Line], num_obst_lines: usize, begin_line: usize, radius: f32, result: &mut Vec2) {
   let mut distance = 0.0;
   for i in begin_line..lines.len() {
     let line_i = &lines[i];
@@ -855,7 +771,7 @@ mod tests {
     };
     let preferred = Vec2i::new(1000, 0);
     let out = orca_step(&params, &world, preferred, 1000);
-    assert!(out.len_sq_i64() <= (1000i64 * 1000i64) + 10);
+    assert!(out.norm_squared() <= (1000i32 * 1000i32) + 10);
     // With an obstacle directly ahead, ORCA shouldn't accelerate into it.
     assert!(out.x <= preferred.x);
   }
@@ -897,8 +813,8 @@ mod tests {
       self_pos,
       self_vel,
       &world,
-      (params.time_horizon_ms as f64 / 1000.0).max(0.01),
-      (params.time_step_ms as f64 / 1000.0).max(0.001),
+      (params.time_horizon_ms as f32 / 1000.0).max(0.01),
+      (params.time_step_ms as f32 / 1000.0).max(0.001),
     );
     let out_v = Vec2::from_i32(out);
     for line in lines {

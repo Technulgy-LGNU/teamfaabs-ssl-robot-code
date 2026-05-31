@@ -1,9 +1,8 @@
-use crate::communication::{send_flags, TeensySendMsg, VisionMsg};
+use crate::communication::{TeensySendMsg, VisionMsg, send_flags};
 use crate::proto::{CpRobot, CpTrackedRobot};
-use crate::robot_logic::helpers::{distance_cpv, Vec2f, Vec2i};
-use crate::robot_logic::orca;
+use crate::robot_logic::helpers::{Vec2f, Vec2i, distance_cpv};
 use crate::robot_logic::orca::{
-  nav_command_to_teensy, NavIntent, OrcaHandle, OrcaRequest, WorldSnapshot,
+  NavIntent, OrcaHandle, OrcaRequest, WorldSnapshot, nav_command_to_teensy,
 };
 use std::f32::consts::PI;
 
@@ -22,7 +21,7 @@ pub fn get_ball(
   // Check distance to ball, either use orca for long distance or use direct control for taking the ball
   if dist > 500f32 {
     let intent = NavIntent::GoToPosition {
-      target_pos_mm: orca::Vec2i::new(cp_data.ball.pos.x, cp_data.ball.pos.y),
+      target_pos_mm: Vec2i::new(cp_data.ball.pos.x, cp_data.ball.pos.y),
       max_speed_mm_s: 2500,
     };
     orca.publish(OrcaRequest {

@@ -118,7 +118,7 @@ async fn main() {
     // Orca
     let world = WorldSnapshot::from_cp(
       &cp_data,
-      config.robot_id as u32,
+      &robot_self,
       params.default_robot_radius_mm,
     );
 
