@@ -1,9 +1,9 @@
 use crate::communication::send_cp::send_cp;
 use crate::communication::{communication_receiver, send_flags};
-use crate::proto::RobotCp;
+use crate::proto::{CpState, RobotCp};
 use crate::robot_logic::command;
 use crate::robot_logic::goalie::goalie;
-use crate::robot_logic::helpers::{Vec2f, inside_field};
+use crate::robot_logic::helpers::{Vec2f, inside_field, ball_avoidance_margin_mm, allow_own_penalty_area};
 use crate::robot_logic::orca::{OrcaHandle, OrcaParams, WorldSnapshot};
 use std::time::Duration;
 use tracing::info;
@@ -117,9 +117,12 @@ async fn main() {
 
     // Orca
     let world = WorldSnapshot::from_cp(
+      &config,
       &cp_data,
       &robot_self,
       params.default_robot_radius_mm,
+      ball_avoidance_margin_mm(&cp_data),
+      allow_own_penalty_area(&cp_data),
     );
 
     // Buttons
@@ -180,7 +183,15 @@ async fn main() {
       }
       4 => {
         // Goalie, move into penalty area and protect the goal
-        robot_msg = goalie(&config, &cp_data, &robot_self, &vision_data, &orca, &world, robot_msg);
+        robot_msg = goalie(
+          &config,
+          &cp_data,
+          &robot_self,
+          &vision_data,
+          &orca,
+          &world,
+          robot_msg,
+        );
       }
       5 => {
         // Substitute

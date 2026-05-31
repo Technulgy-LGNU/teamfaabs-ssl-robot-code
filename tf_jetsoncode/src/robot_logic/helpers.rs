@@ -1,6 +1,6 @@
 use crate::communication::TeensySendMsg;
-use crate::config;
-use crate::proto::CpVector2;
+use crate::{config, proto};
+use crate::proto::{CpState, CpVector2};
 pub(crate) use crate::robot_logic::{RAW_MAX_SPEED_MM_S, RAW_STOP_RADIUS_MM};
 use std::ops::{Add, Div, Mul, Sub};
 
@@ -316,6 +316,17 @@ pub(crate) fn raw_move_towards(
 #[inline]
 pub(crate) fn raw_movement_accel(dist: f32) -> f32 {
   (dist * 3.0).clamp(60.0, RAW_MAX_SPEED_MM_S)
+}
+
+pub(crate) fn ball_avoidance_margin_mm(cp_data: &proto::CpRobot) -> u32 {
+  match CpState::try_from(cp_data.cmd.state).unwrap_or(CpState::StateUnspecified) {
+    CpState::StateStop => 550,
+    _ => 0,
+  }
+}
+
+pub(crate) fn allow_own_penalty_area(cp_data: &proto::CpRobot) -> bool {
+  matches!(CpState::try_from(cp_data.cmd.state), Ok(CpState::StateGoalie))
 }
 
 mod test {
