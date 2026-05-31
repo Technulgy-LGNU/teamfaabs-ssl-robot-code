@@ -233,10 +233,15 @@ pub(crate) fn raw_move_towards(
     0
   } else {
     // Simple proportional speed scaling, capped for safe goalie motion.
-    (distance * 3f32).clamp(60f32, RAW_MAX_SPEED_MM_S).round() as u16
+    raw_movement_accel(distance) as u16
   };
 
   msg
+}
+
+#[inline]
+pub(crate) fn raw_movement_accel(dist: f32) -> f32 {
+  (dist * 3f32).clamp(60f32, RAW_MAX_SPEED_MM_S).round()
 }
 
 mod test {

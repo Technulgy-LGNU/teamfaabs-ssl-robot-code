@@ -1,15 +1,17 @@
 use crate::communication::{TeensySendMsg, VisionMsg, send_flags};
 use crate::config;
 use crate::proto::{CpRobot, CpTrackedRobot};
-use crate::robot_logic::ball_logic::{get_ball, receive_ball};
 use crate::robot_logic::helpers::{Vec2f, distance_cpv};
 use crate::robot_logic::orca::OrcaOptions;
 use tracing::info;
+use crate::robot_logic::get_ball::get_ball;
+use crate::robot_logic::receive_ball::receive_ball;
 
-mod ball_logic;
 pub mod goalie;
 pub mod helpers;
 pub mod orca;
+mod receive_ball;
+mod get_ball;
 
 // If we are inside this distance in the penalty area, stop using raw motion.
 pub(crate) const RAW_STOP_RADIUS_MM: f32 = 40f32;
