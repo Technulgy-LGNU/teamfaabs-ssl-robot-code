@@ -1,639 +1,872 @@
+//! ORCA (Optimal Reciprocal Collision Avoidance) – *starter* scaffolding.
+//!
+//! This module is intentionally **high level**:
+//! - It gives you a clean async boundary (`OrcaHandle`) so the rest of your robot code can remain
+//!   simple and deterministic.
+//! - The actual ORCA math is represented by a placeholder `orca_step()` implementation.
+//!
+//! ## Intended data flow (120 Hz main loop)
+//! 1. Main loop receives latest packets (`CpRobot`, Teensy IMU, onboard vision, ...).
+//! 2. Main loop builds a `WorldSnapshot` + `NavIntent`.
+//! 3. Main loop calls `orca.publish(...)` (latest-only).
+//! 4. ORCA worker produces a `NavCommand` (desired velocity) which the main loop reads and
+//!    translates to your motor/teensy protocol.
+//!
+//! ## Why a worker task?
+//! ORCA can be CPU heavy. Putting it behind a worker:
+//! - prevents your 120 Hz loop from stalling
+//! - gives you one place to cache / pre-allocate ORCA state later (agent list, KD-tree, etc.)
+//! - lets you `spawn_blocking` if you want to isolate CPU usage
+
+use std::time::{Duration, Instant};
+
+use tokio::sync::watch;
+
 use crate::communication::TeensySendMsg;
-use crate::config::Config;
 use crate::proto::{CpRobot, CpTrackedRobot, CpVector2};
-use crate::robot_logic::helpers::Vec2f;
-use crate::{DEFAULT_ACCEL_MM_S2, DEFAULT_DECEL_MM_S2};
 
-const DEFAULT_DT_S: f32 = 0.004;
-const DEFAULT_MAX_SPEED_MM_S: f32 = 6000f32;
-const DEFAULT_APPROACH_GAIN: f32 = 1.6;
-const DEFAULT_ROBOT_RADIUS_MM: f32 = 90f32;
-const DEFAULT_ROBOT_INFLUENCE_MM: f32 = 520f32;
-const DEFAULT_BALL_AVOID_MM: f32 = 500f32;
-const DEFAULT_PENALTY_MARGIN_MM: f32 = 200f32;
-const DEFAULT_STATIC_INFLUENCE_MM: f32 = 900f32;
-
-#[derive(Debug, Clone, Copy)]
-pub struct OrcaOptions {
-  pub max_speed_mm_s: f32,
-  pub approach_gain: f32,
-  pub stop_radius_mm: f32,
-  pub avoid_ball: bool,
-  pub ball_avoid_mm: f32,
-  pub avoid_penalty_area: bool,
-  pub time_horizon_s: f32,
-  pub robot_radius_mm: f32,
-  pub robot_influence_mm: f32,
-  pub ball_influence_mm: f32,
-  pub penalty_margin_mm: f32,
-  pub static_influence_mm: f32,
-  pub accel_mm_s2: f32,
-  pub decel_mm_s2: f32,
+/// 2D integer vector in millimeters (or millimeters/second, depending on context).
+///
+/// You said “everything is i32”; internally we sometimes upcast to i64 for safety.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct Vec2i {
+  pub x: i32,
+  pub y: i32,
 }
 
-impl Default for OrcaOptions {
+impl Vec2i {
+  #[inline]
+  pub const fn new(x: i32, y: i32) -> Self {
+    Self { x, y }
+  }
+
+  pub(crate) fn new_from_cp(v: CpVector2) -> Vec2i {
+    Vec2i::new(v.x, v.y)
+  }
+
+  #[inline]
+  pub fn len_sq_i64(self) -> i64 {
+    let x = self.x as i64;
+    let y = self.y as i64;
+    x * x + y * y
+  }
+
+  #[inline]
+  fn from_cp_vec2(v: &CpVector2) -> Self {
+    Self { x: v.x, y: v.y }
+  }
+
+  /// Scales the vector to a target speed (mm/s) while preserving direction.
+  /// If the vector is ~zero, returns zero.
+  #[inline]
+  pub fn with_speed_clamped(self, max_speed_mm_s: u32) -> Self {
+    let max_speed = max_speed_mm_s as f64;
+    let vx = self.x as f64;
+    let vy = self.y as f64;
+    let s = (vx * vx + vy * vy).sqrt();
+    if s < 1e-6 {
+      return Self::default();
+    }
+    if s <= max_speed {
+      return self;
+    }
+    let k = max_speed / s;
+    Self {
+      x: (vx * k).round() as i32,
+      y: (vy * k).round() as i32,
+    }
+  }
+}
+
+impl std::ops::Add for Vec2i {
+  type Output = Vec2i;
+  fn add(self, rhs: Vec2i) -> Self::Output {
+    Vec2i::new(self.x.saturating_add(rhs.x), self.y.saturating_add(rhs.y))
+  }
+}
+
+impl std::ops::Sub for Vec2i {
+  type Output = Vec2i;
+  fn sub(self, rhs: Vec2i) -> Self::Output {
+    Vec2i::new(self.x.saturating_sub(rhs.x), self.y.saturating_sub(rhs.y))
+  }
+}
+
+impl std::ops::Mul<i32> for Vec2i {
+  type Output = Vec2i;
+  fn mul(self, rhs: i32) -> Self::Output {
+    Vec2i::new(self.x.saturating_mul(rhs), self.y.saturating_mul(rhs))
+  }
+}
+
+/// A tracked robot (other agent) as seen in the world model.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct OtherRobot {
+  pub id: u32,
+  pub pos_mm: Vec2i,
+  pub vel_mm_s: Vec2i,
+  /// Collision radius for this robot (including safety margin).
+  pub radius_mm: u32,
+}
+
+#[derive(Debug, Clone)]
+pub struct WorldSnapshot {
+  pub now: Instant,
+
+  pub self_id: u32,
+  pub self_pos_mm: Vec2i,
+  pub self_vel_mm_s: Vec2i,
+  /// Optional: your current heading (e.g. milliradians / degrees / whatever your stack uses).
+  pub self_orientation: Option<i32>,
+
+  /// All other robots (both teams), excluding self.
+  pub others: Vec<OtherRobot>,
+}
+
+impl Default for WorldSnapshot {
   fn default() -> Self {
     Self {
-      max_speed_mm_s: DEFAULT_MAX_SPEED_MM_S,
-      approach_gain: DEFAULT_APPROACH_GAIN,
-      stop_radius_mm: 180f32,
-      avoid_ball: true,
-      ball_avoid_mm: DEFAULT_BALL_AVOID_MM,
-      avoid_penalty_area: true,
-      time_horizon_s: 4f32,
-      robot_radius_mm: DEFAULT_ROBOT_RADIUS_MM,
-      robot_influence_mm: DEFAULT_ROBOT_INFLUENCE_MM,
-      ball_influence_mm: DEFAULT_BALL_AVOID_MM,
-      penalty_margin_mm: DEFAULT_PENALTY_MARGIN_MM,
-      static_influence_mm: DEFAULT_STATIC_INFLUENCE_MM,
-      accel_mm_s2: DEFAULT_ACCEL_MM_S2,
-      decel_mm_s2: DEFAULT_DECEL_MM_S2,
+      now: Instant::now(),
+      self_id: 0,
+      self_pos_mm: Vec2i::default(),
+      self_vel_mm_s: Vec2i::default(),
+      self_orientation: None,
+      others: Vec::new(),
     }
   }
 }
 
-#[allow(dead_code)]
+impl WorldSnapshot {
+  /// Build a [`WorldSnapshot`] from a CrashPilot world packet.
+  ///
+  /// Notes:
+  /// - CrashPilot supplies both teams; we simply merge them.
+  /// - We find `self` by `self_id` inside either `robots_yellow` or `robots_blue`.
+  /// - Units are assumed to already be *millimeters* and *millimeters/second* as described.
+  pub fn from_cp(cp: &CpRobot, self_id: u32, default_robot_radius_mm: u32) -> Self {
+    let (self_pos_mm, self_vel_mm_s, self_orientation) = find_self(cp, self_id)
+      .map(|r| {
+        (
+          Vec2i::from_cp_vec2(&r.pos),
+          r.vel
+            .as_ref()
+            .map(Vec2i::from_cp_vec2)
+            .unwrap_or_default(),
+          Some(r.orientation),
+        )
+      })
+      .unwrap_or((Vec2i::default(), Vec2i::default(), None));
+
+    let mut others = Vec::with_capacity(cp.robots_yellow.len() + cp.robots_blue.len());
+    append_others(&mut others, &cp.robots_yellow, self_id, default_robot_radius_mm);
+    append_others(&mut others, &cp.robots_blue, self_id, default_robot_radius_mm);
+
+    Self {
+      now: Instant::now(),
+      self_id,
+      self_pos_mm,
+      self_vel_mm_s,
+      self_orientation,
+      others,
+    }
+  }
+}
+
+fn find_self(cp: &CpRobot, self_id: u32) -> Option<&CpTrackedRobot> {
+  cp.robots_yellow
+    .iter()
+    .find(|r| r.robot_id == self_id)
+    .or_else(|| cp.robots_blue.iter().find(|r| r.robot_id == self_id))
+}
+
+fn append_others(out: &mut Vec<OtherRobot>, src: &[CpTrackedRobot], self_id: u32, default_radius_mm: u32) {
+  for r in src {
+    if r.robot_id == self_id {
+      continue;
+    }
+    out.push(OtherRobot {
+      id: r.robot_id,
+      pos_mm: Vec2i::from_cp_vec2(&r.pos),
+      vel_mm_s: r.vel.as_ref().map(Vec2i::from_cp_vec2).unwrap_or_default(),
+      radius_mm: default_radius_mm,
+    });
+  }
+}
+
+/// Higher-level navigation intent coming from “skills/behavior”.
+///
+/// ORCA typically returns a *velocity* that tries to follow a preferred velocity. Your behavior
+/// layer decides that preferred velocity.
+#[derive(Debug, Clone, Copy)]
+pub enum NavIntent {
+  /// Stop (preferred velocity 0).
+  Stop,
+  /// Drive towards a target position.
+  GoToPosition {
+    target_pos_mm: Vec2i,
+    /// Maximum desired speed.
+    max_speed_mm_s: u32,
+  },
+  /// Directly request a preferred velocity (world frame).
+  PreferredVelocity {
+    vel_mm_s: Vec2i,
+    max_speed_mm_s: u32,
+  },
+}
+
+/// Output of ORCA worker.
 #[derive(Debug, Clone, Copy, Default)]
-pub struct OrcaPlan {
-  pub velocity: Vec2f,
-  pub target: Vec2f,
-  pub target_distance_mm: f32,
-  pub speed_mm_s: f32,
-  pub direction_deg: f32,
-  pub current_speed_mm_s: f32,
-  pub accel_hint_mm_s2: f32,
-  pub decel_hint_mm_s2: f32,
+pub struct NavCommand {
+  /// Collision-avoiding velocity in world frame.
+  pub vel_mm_s: Vec2i,
+  /// If you want: use this to expose why ORCA chose something (debug / tuning).
+  pub debug: Option<OrcaDebug>,
+}
+
+/// Convert a [`NavCommand`] (world-frame velocity in mm/s) into fields understood by the Teensy.
+///
+/// Assumptions (based on your notes):
+/// - Robot expects the same coordinate system as vision.
+/// - `TeensySendMsg.dir` is **degrees**, integer, in range `0..360`.
+/// - `TeensySendMsg.speed` is a magnitude in **mm/s**.
+///
+/// Direction definition used here:
+/// - `dir = 0°` points along +X
+/// - `dir = 90°` points along +Y
+/// - `dir` increases CCW (standard `atan2(y, x)`)
+///
+/// If velocity is (near) zero: returns `dir = 0`, `speed = 0`.
+///
+/// ### Direction resolution
+/// 1° resolution is usually okay for SSL drive, but you *will* see quantization at low speeds.
+/// If you later want finer resolution without changing the type, a common approach is to send
+/// `dir_scaled = degrees * 100` (0..36000 fits in `u16`). That does require changing your Teensy
+/// interpretation.
+pub fn nav_command_to_teensy(mut base: TeensySendMsg, nav: NavCommand) -> TeensySendMsg {
+  let (dir_deg, speed_mm_s) = vel_to_dir_speed_deg_1(nav.vel_mm_s);
+  base.dir = dir_deg;
+  base.speed = speed_mm_s;
+  base
+}
+
+/// Convert velocity vector (mm/s) to `(dir_degrees, speed_mm_s)`.
+///
+/// - dir is integer degrees with 1° resolution.
+/// - speed is magnitude, clamped to `u16::MAX`.
+pub fn vel_to_dir_speed_deg_1(vel_mm_s: Vec2i) -> (u16, u16) {
+  let vx = vel_mm_s.x as f64;
+  let vy = vel_mm_s.y as f64;
+  let speed = (vx * vx + vy * vy).sqrt();
+  if speed < 1e-6 {
+    return (0, 0);
+  }
+
+  let mut dir = vy.atan2(vx).to_degrees();
+  if dir < 0.0 {
+    dir += 360.0;
+  }
+  // Wrap just in case numeric conversion yields 360.
+  let dir_u16 = (dir.round() as i32).rem_euclid(360) as u16;
+  let speed_u16 = speed.round().clamp(0.0, u16::MAX as f64) as u16;
+  (dir_u16, speed_u16)
+}
+
+#[derive(Debug, Clone, Copy, Default)]
+pub struct OrcaDebug {
+  pub preferred_vel_mm_s: Vec2i,
+  pub num_neighbors: usize,
+  pub compute_time: Duration,
+}
+
+/// Parameters for ORCA.
+///
+/// These are not “the correct ORCA parameters” yet—just a place to put them.
+#[derive(Debug, Clone, Copy)]
+pub struct OrcaParams {
+  /// How far ahead we consider collisions.
+  pub time_horizon_ms: u32,
+  /// Extra safety margin around robots.
+  pub safety_margin_mm: u32,
+  /// Default radius if you don't have per-robot info.
+  pub default_robot_radius_mm: u32,
+  /// The controller tick interval. Used for ORCA "already colliding" handling.
+  pub time_step_ms: u32,
+  /// ORCA assumes both agents share responsibility. Standard value is 0.5.
+  ///
+  /// If you want to be more conservative (treat others as non-cooperative obstacles),
+  /// increase this towards 1.0.
+  pub responsibility: f64,
+  /// If true, compute runs on the blocking pool (`spawn_blocking`).
+  pub run_blocking: bool,
+  /*
+  •
+max_speed_mm_s in NavIntent → caps desired speed.
+•
+time_horizon_ms → bigger = reacts earlier/more conservatively; smaller = later/more abrupt avoidance.
+•
+safety_margin_mm → bigger = starts avoiding sooner, so you’ll slow/turn earlier near others.
+•
+responsibility → higher = you take more of the avoidance burden, so velocity gets pushed away more.
+•
+time_step_ms → only matters when already colliding; smaller steps make the “escape” constraint less aggressive per tick.
+   */
+}
+
+impl Default for OrcaParams {
+  fn default() -> Self {
+    Self {
+      time_horizon_ms: 2000,
+      safety_margin_mm: 60,
+      default_robot_radius_mm: 90,
+      time_step_ms: 8,
+      responsibility: 0.5,
+      run_blocking: true,
+    }
+  }
+}
+
+#[derive(Debug, Clone)]
+pub struct OrcaRequest {
+  pub world: WorldSnapshot,
+  pub intent: NavIntent,
+}
+
+/// Handle to the ORCA worker.
+///
+/// Design goal: provide *latest-only* semantics.
+/// - If you publish 120Hz updates, but ORCA computes at 60Hz, you don't want a backlog.
+/// - `watch` channels always keep only the newest value.
+#[derive(Clone)]
+pub struct OrcaHandle {
+  tx_req: watch::Sender<OrcaRequest>,
+  rx_cmd: watch::Receiver<NavCommand>,
+}
+
+impl OrcaHandle {
+  /// Spawn the ORCA worker task.
+  pub fn spawn(params: OrcaParams) -> Self {
+    let (tx_req, mut rx_req) = watch::channel(OrcaRequest {
+      world: WorldSnapshot {
+        now: Instant::now(),
+        self_id: 0,
+        ..Default::default()
+      },
+      intent: NavIntent::Stop,
+    });
+
+    let (tx_cmd, rx_cmd) = watch::channel(NavCommand::default());
+
+    tokio::spawn(async move {
+      // Local worker loop. In a real ORCA implementation you would keep allocations/cache here.
+      loop {
+        // Wait for a new request (or channel closed).
+        if rx_req.changed().await.is_err() {
+          break;
+        }
+        let req = rx_req.borrow().clone();
+        let start = Instant::now();
+
+        // `spawn_blocking` requires a `'static` closure, so capture by value.
+        let params = params;
+        let compute = move || {
+          let (preferred, max_speed) = preferred_velocity(&req.world, req.intent);
+          let vel = orca_step(&params, &req.world, preferred, max_speed);
+          let debug = OrcaDebug {
+            preferred_vel_mm_s: preferred,
+            num_neighbors: req.world.others.len(),
+            compute_time: start.elapsed(),
+          };
+          NavCommand {
+            vel_mm_s: vel,
+            debug: Some(debug),
+          }
+        };
+
+        let cmd = if params.run_blocking {
+          tokio::task::spawn_blocking(compute).await.unwrap_or_else(|_| NavCommand::default())
+        } else {
+          compute()
+        };
+
+        // It's okay if receivers are gone.
+        let _ = tx_cmd.send(cmd);
+      }
+    });
+
+    Self { tx_req, rx_cmd }
+  }
+
+  /// Publish the newest world+intent.
+  pub fn publish(&self, req: OrcaRequest) {
+    // `watch::Sender::send` only fails if there are no receivers, but that's fine.
+    let _ = self.tx_req.send(req);
+  }
+
+  /// Get the latest command (non-async).
+  pub fn latest(&self) -> NavCommand {
+    *self.rx_cmd.borrow()
+  }
+
+  /// Async wait for the next produced command.
+  pub async fn changed(&mut self) -> Option<NavCommand> {
+    if self.rx_cmd.changed().await.is_err() {
+      return None;
+    }
+    Some(*self.rx_cmd.borrow())
+  }
+}
+
+fn preferred_velocity(world: &WorldSnapshot, intent: NavIntent) -> (Vec2i, u32) {
+  match intent {
+    NavIntent::Stop => (Vec2i::default(), 0),
+    NavIntent::GoToPosition {
+      target_pos_mm,
+      max_speed_mm_s,
+    } => {
+      let to_target = (target_pos_mm - world.self_pos_mm)*2;
+      // Simple P-controller: "direction towards target" with capped magnitude.
+      // Later you can add slowing down near target, orientation constraints, etc.
+      (to_target.with_speed_clamped(max_speed_mm_s), max_speed_mm_s)
+    }
+    NavIntent::PreferredVelocity {
+      vel_mm_s,
+      max_speed_mm_s,
+    } => (vel_mm_s.with_speed_clamped(max_speed_mm_s), max_speed_mm_s),
+  }
+}
+
+/// Compute one ORCA step: preferred velocity -> collision-free velocity.
+///
+/// This follows the classic RVO2 ORCA formulation:
+/// - Build half-plane constraints ("ORCA lines") in velocity space
+/// - Find the feasible velocity closest to the preferred velocity
+fn orca_step(params: &OrcaParams, world: &WorldSnapshot, preferred_vel: Vec2i, max_speed_mm_s: u32) -> Vec2i {
+  if max_speed_mm_s == 0 {
+    return Vec2i::default();
+  }
+
+  let max_speed = max_speed_mm_s as f64;
+  let time_horizon = (params.time_horizon_ms as f64 / 1000.0).max(0.01);
+  let time_step = (params.time_step_ms as f64 / 1000.0).max(0.001);
+
+  let self_pos = Vec2::from_i32(world.self_pos_mm);
+  let self_vel = Vec2::from_i32(world.self_vel_mm_s);
+  let pref_vel = Vec2::from_i32(preferred_vel);
+
+  let lines = create_orca_lines(params, self_pos, self_vel, world, time_horizon, time_step);
+  let mut new_vel = Vec2::default();
+  let fail = linear_program_2(&lines, max_speed, pref_vel, false, &mut new_vel);
+  if fail < lines.len() {
+    linear_program_3(&lines, 0, fail, max_speed, &mut new_vel);
+  }
+
+  Vec2i {
+    x: new_vel.x.round() as i32,
+    y: new_vel.y.round() as i32,
+  }
+    .with_speed_clamped(max_speed_mm_s)
+}
+
+// -------------------------------------------------------------------------------------------------
+// ORCA math (f64 internally)
+
+#[derive(Debug, Clone, Copy, Default)]
+struct Vec2 {
+  x: f64,
+  y: f64,
+}
+
+impl Vec2 {
+  #[inline]
+  fn new(x: f64, y: f64) -> Self {
+    Self { x, y }
+  }
+
+  #[inline]
+  fn from_i32(v: Vec2i) -> Self {
+    Self {
+      x: v.x as f64,
+      y: v.y as f64,
+    }
+  }
+
+  #[inline]
+  fn abs_sq(self) -> f64 {
+    self.x * self.x + self.y * self.y
+  }
+
+  #[inline]
+  fn abs(self) -> f64 {
+    self.abs_sq().sqrt()
+  }
+
+  #[inline]
+  fn dot(self, other: Vec2) -> f64 {
+    self.x * other.x + self.y * other.y
+  }
+
+  #[inline]
+  fn det(self, other: Vec2) -> f64 {
+    self.x * other.y - self.y * other.x
+  }
+
+  #[inline]
+  fn normalize(self) -> Vec2 {
+    let a = self.abs();
+    if a < 1e-12 {
+      Vec2::default()
+    } else {
+      self / a
+    }
+  }
+}
+
+impl std::ops::Add for Vec2 {
+  type Output = Vec2;
+  fn add(self, rhs: Vec2) -> Self::Output {
+    Vec2::new(self.x + rhs.x, self.y + rhs.y)
+  }
+}
+
+impl std::ops::Sub for Vec2 {
+  type Output = Vec2;
+  fn sub(self, rhs: Vec2) -> Self::Output {
+    Vec2::new(self.x - rhs.x, self.y - rhs.y)
+  }
+}
+
+impl std::ops::Mul<f64> for Vec2 {
+  type Output = Vec2;
+  fn mul(self, rhs: f64) -> Self::Output {
+    Vec2::new(self.x * rhs, self.y * rhs)
+  }
+}
+
+impl std::ops::Div<f64> for Vec2 {
+  type Output = Vec2;
+  fn div(self, rhs: f64) -> Self::Output {
+    Vec2::new(self.x / rhs, self.y / rhs)
+  }
+}
+
+impl std::ops::Neg for Vec2 {
+  type Output = Vec2;
+  fn neg(self) -> Self::Output {
+    Vec2::new(-self.x, -self.y)
+  }
 }
 
 #[derive(Debug, Clone, Copy)]
-struct Rect {
-  min_x: f32,
-  max_x: f32,
-  min_y: f32,
-  max_y: f32,
+struct Line {
+  /// A point on the line in velocity space.
+  point: Vec2,
+  /// Direction along the line (half-plane is to the left of this direction).
+  direction: Vec2,
 }
 
-#[allow(dead_code)]
-#[inline]
-pub fn default_options() -> OrcaOptions {
-  OrcaOptions::default()
-}
+fn create_orca_lines(
+  params: &OrcaParams,
+  self_pos: Vec2,
+  self_vel: Vec2,
+  world: &WorldSnapshot,
+  time_horizon_s: f64,
+  time_step_s: f64,
+) -> Vec<Line> {
+  let inv_time_horizon = 1.0 / time_horizon_s;
+  let inv_time_step = 1.0 / time_step_s;
+  let self_radius = params.default_robot_radius_mm as f64;
 
-#[inline]
-pub fn drive_to_target(
-  cfg: &Config, cp_data: &CpRobot, robot_self: CpTrackedRobot, target: CpVector2,
-  options: OrcaOptions,
-) -> OrcaPlan {
-  let self_pos = Vec2f::new_from_cp(robot_self.pos);
-  let self_vel = robot_velocity(robot_self);
-  let mut target = Vec2f::new_from_cp(target);
+  let mut lines = Vec::with_capacity(world.others.len());
+  for other in &world.others {
+    let other_pos = Vec2::from_i32(other.pos_mm);
+    let other_vel = Vec2::from_i32(other.vel_mm_s);
+    let other_radius = other.radius_mm as f64;
+    let combined_radius = self_radius + other_radius + params.safety_margin_mm as f64;
 
-  if options.avoid_penalty_area {
-    target = project_target_outside_penalty_areas(cfg, target, options.penalty_margin_mm);
-  }
+    let relative_position = other_pos - self_pos;
+    let relative_velocity = self_vel - other_vel;
+    let dist_sq = relative_position.abs_sq();
+    let combined_radius_sq = combined_radius * combined_radius;
 
-  let to_target = target - self_pos;
-  let distance_mm = to_target.norm();
-  let current_speed_mm_s = self_vel.norm();
-
-  if distance_mm <= options.stop_radius_mm {
-    return OrcaPlan {
-      velocity: Vec2f::new(0f32, 0f32),
-      target,
-      target_distance_mm: distance_mm,
-      speed_mm_s: 0f32,
-      direction_deg: 0f32,
-      current_speed_mm_s,
-      accel_hint_mm_s2: options.accel_mm_s2,
-      decel_hint_mm_s2: options.decel_mm_s2,
+    let mut line = Line {
+      point: Vec2::default(),
+      direction: Vec2::default(),
     };
+    let u;
+
+    if dist_sq > combined_radius_sq {
+      // No collision.
+      let w = relative_velocity - relative_position * inv_time_horizon;
+      let w_length_sq = w.abs_sq();
+      let dot_1 = w.dot(relative_position);
+
+      if dot_1 < 0.0 && dot_1 * dot_1 > combined_radius_sq * w_length_sq {
+        // Project on cut-off circle.
+        let w_len = w_length_sq.sqrt();
+        let unit_w = if w_len < 1e-12 { Vec2::default() } else { w / w_len };
+        line.direction = Vec2::new(unit_w.y, -unit_w.x);
+        u = unit_w * (combined_radius * inv_time_horizon - w_len);
+      } else {
+        // Project on legs.
+        let leg = (dist_sq - combined_radius_sq).max(0.0).sqrt();
+        if relative_position.det(w) > 0.0 {
+          line.direction = Vec2::new(
+            relative_position.x * leg - relative_position.y * combined_radius,
+            relative_position.x * combined_radius + relative_position.y * leg,
+          ) / dist_sq;
+        } else {
+          line.direction = -Vec2::new(
+            relative_position.x * leg + relative_position.y * combined_radius,
+            -relative_position.x * combined_radius + relative_position.y * leg,
+          ) / dist_sq;
+        }
+        let dot_2 = relative_velocity.dot(line.direction);
+        u = line.direction * dot_2 - relative_velocity;
+      }
+
+      line.point = self_vel + u * params.responsibility;
+    } else {
+      // Collision. Use time step to guarantee separation.
+      let w = relative_velocity - relative_position * inv_time_step;
+      let w_len = w.abs();
+      let unit_w = if w_len < 1e-12 { Vec2::default() } else { w / w_len };
+      line.direction = Vec2::new(unit_w.y, -unit_w.x);
+      u = unit_w * (combined_radius * inv_time_step - w_len);
+      line.point = self_vel + u * params.responsibility;
+    }
+
+    lines.push(line);
   }
 
-  let mut desired_speed = (distance_mm * options.approach_gain).min(options.max_speed_mm_s);
-  desired_speed = decel_limit(desired_speed, distance_mm, options.decel_mm_s2);
-  let _accel_preview = accel_limit(
-    current_speed_mm_s,
-    desired_speed,
-    options.accel_mm_s2,
-    DEFAULT_DT_S,
-  );
-  desired_speed = desired_speed.min(options.max_speed_mm_s);
-
-  let mut velocity = to_target.normalized().scale(desired_speed);
-  velocity = avoid_dynamic_robots(cfg, cp_data, robot_self, velocity, options);
-
-  if options.avoid_ball {
-    velocity = avoid_ball(cp_data, robot_self, velocity, options);
-  }
-
-  if options.avoid_penalty_area {
-    velocity = avoid_penalty_areas(cfg, robot_self, velocity, options);
-  }
-
-  velocity = clamp_magnitude(velocity, options.max_speed_mm_s);
-
-  let speed_mm_s = velocity.norm();
-  OrcaPlan {
-    velocity,
-    target,
-    target_distance_mm: distance_mm,
-    speed_mm_s,
-    direction_deg: velocity_to_direction_deg(velocity),
-    current_speed_mm_s,
-    accel_hint_mm_s2: options.accel_mm_s2,
-    decel_hint_mm_s2: options.decel_mm_s2,
-  }
+  lines
 }
 
-#[inline]
-pub fn orca_to_teensy(
-  mut msg: TeensySendMsg, plan: &OrcaPlan, _robot_self: CpTrackedRobot,
-) -> TeensySendMsg {
-  let speed = plan
-    .velocity
-    .x
-    .hypot(plan.velocity.y)
-    .round()
-    .clamp(0f32, u16::MAX as f32) as u16;
-  let dir = velocity_to_teensy_dir(plan.velocity);
-
-  msg.speed = speed;
-  msg.dir = dir;
-  msg
-}
-
-#[allow(dead_code)]
-#[inline]
-pub fn accel_limit(
-  current_speed_mm_s: f32, target_speed_mm_s: f32, accel_mm_s2: f32, dt_s: f32,
-) -> f32 {
-  let max_step = accel_mm_s2.max(0f32) * dt_s.max(0f32);
-  if target_speed_mm_s >= current_speed_mm_s {
-    (current_speed_mm_s + max_step).min(target_speed_mm_s)
+/// Solve:
+///   minimize |v - opt_velocity|
+/// subject to:
+///   v inside circle(radius)
+///   v in all half-planes given by `lines`
+///
+/// Returns `None` if numerical issues occur.
+/// Returns the index of the first failing line, or `lines.len()` if feasible.
+fn linear_program_2(lines: &[Line], radius: f64, opt_velocity: Vec2, direction_opt: bool, result: &mut Vec2) -> usize {
+  *result = if direction_opt {
+    // Optimize direction: pick point on circle.
+    opt_velocity.normalize() * radius
   } else {
-    target_speed_mm_s
-  }
-}
-
-#[inline]
-pub fn decel_limit(speed_mm_s: f32, distance_mm: f32, decel_mm_s2: f32) -> f32 {
-  if distance_mm <= 0f32 || decel_mm_s2 <= 0f32 {
-    return 0f32;
-  }
-
-  let braking_speed = (2f32 * decel_mm_s2 * distance_mm).sqrt();
-  speed_mm_s.min(braking_speed)
-}
-
-#[inline]
-fn avoid_dynamic_robots(
-  cfg: &Config, cp_data: &CpRobot, robot_self: CpTrackedRobot, velocity: Vec2f,
-  options: OrcaOptions,
-) -> Vec2f {
-  let self_pos = Vec2f::new_from_cp(robot_self.pos);
-  let self_vel = robot_velocity(robot_self);
-  let horizon = options.time_horizon_s.max(0.1);
-  let mut out = velocity;
-
-  let (friendly, opponents) = if is_yellow_team(cfg) {
-    (&cp_data.robots_yellow, &cp_data.robots_blue)
-  } else {
-    (&cp_data.robots_blue, &cp_data.robots_yellow)
+    // Optimize closest point.
+    if opt_velocity.abs_sq() > radius * radius {
+      opt_velocity.normalize() * radius
+    } else {
+      opt_velocity
+    }
   };
 
-  for robot in opponents {
-    if robot.robot_id == robot_self.robot_id {
+  for i in 0..lines.len() {
+    let line = &lines[i];
+    if line.direction.det(line.point - *result) > 0.0 {
+      // Result violates constraint i.
+      let prev = *result;
+      if let Some(r) = linear_program_1(lines, i, radius, opt_velocity, direction_opt) {
+        *result = r;
+      } else {
+        *result = prev;
+        return i;
+      }
+    }
+  }
+
+  lines.len()
+}
+
+fn linear_program_1(lines: &[Line], line_no: usize, radius: f64, opt_velocity: Vec2, direction_opt: bool) -> Option<Vec2> {
+  let line = lines.get(line_no)?;
+  let dot = line.point.dot(line.direction);
+  let discriminant = dot * dot + radius * radius - line.point.abs_sq();
+  if discriminant < 0.0 {
+    // Max speed circle fully invalidates this line.
+    return None;
+  }
+
+  let sqrt_discriminant = discriminant.sqrt();
+  let mut t_left = -dot - sqrt_discriminant;
+  let mut t_right = -dot + sqrt_discriminant;
+
+  for i in 0..line_no {
+    let other = lines.get(i)?;
+    let denom = line.direction.det(other.direction);
+    let numer = other.direction.det(line.point - other.point);
+
+    if denom.abs() <= 1e-12 {
+      // Parallel.
+      if numer < 0.0 {
+        return None;
+      }
       continue;
     }
 
-    let obstacle_pos = Vec2f::new_from_cp(robot.pos);
-    let obstacle_vel = robot_velocity(*robot);
-    let base_radius = options.robot_radius_mm + 65f32;
-    let influence = options.robot_influence_mm + 120f32;
-    out = steer_around_dynamic(
-      out,
-      self_pos,
-      self_vel,
-      obstacle_pos,
-      obstacle_vel,
-      base_radius,
-      influence,
-      horizon,
-      1f32,
-    );
-  }
-
-  for robot in friendly {
-    if robot.robot_id == robot_self.robot_id {
-      continue;
+    let t = numer / denom;
+    if denom >= 0.0 {
+      t_right = t_right.min(t);
+    } else {
+      t_left = t_left.max(t);
     }
-
-    let obstacle_pos = Vec2f::new_from_cp(robot.pos);
-    let obstacle_vel = robot_velocity(*robot);
-    let base_radius = options.robot_radius_mm + 40f32;
-    let influence = options.robot_influence_mm + 50f32;
-    out = steer_around_dynamic(
-      out,
-      self_pos,
-      self_vel,
-      obstacle_pos,
-      obstacle_vel,
-      base_radius,
-      influence,
-      horizon,
-      0.55,
-    );
-  }
-
-  out
-}
-
-#[inline]
-fn avoid_ball(
-  cp_data: &CpRobot, robot_self: CpTrackedRobot, velocity: Vec2f, options: OrcaOptions,
-) -> Vec2f {
-  let self_pos = Vec2f::new_from_cp(robot_self.pos);
-  let self_vel = robot_velocity(robot_self);
-  let ball_pos = Vec2f::new_from_cp(cp_data.ball.pos);
-  let ball_vel = cp_data
-    .ball
-    .vel
-    .map_or(Vec2f::new(0f32, 0f32), Vec2f::new_from_cp);
-
-  steer_around_dynamic(
-    velocity,
-    self_pos,
-    self_vel,
-    ball_pos,
-    ball_vel,
-    options.ball_avoid_mm.max(150f32),
-    options.ball_influence_mm.max(options.ball_avoid_mm),
-    options.time_horizon_s.max(0.1),
-    1.25,
-  )
-}
-
-#[inline]
-fn avoid_penalty_areas(
-  cfg: &Config, robot_self: CpTrackedRobot, velocity: Vec2f, options: OrcaOptions,
-) -> Vec2f {
-  let self_pos = Vec2f::new_from_cp(robot_self.pos);
-  let mut out = velocity;
-
-  for rect in penalty_rects(cfg).into_iter() {
-    let expanded = expand_rect(rect, options.penalty_margin_mm);
-    out = steer_around_rect(
-      out,
-      self_pos,
-      expanded,
-      options.static_influence_mm,
-      options.max_speed_mm_s,
-    );
-  }
-
-  out
-}
-
-#[inline]
-fn project_target_outside_penalty_areas(cfg: &Config, target: Vec2f, margin_mm: f32) -> Vec2f {
-  let mut out = target;
-
-  for rect in penalty_rects(cfg).into_iter() {
-    let expanded = expand_rect(rect, margin_mm);
-    if point_in_rect(out, expanded) {
-      out = project_outside_rect(out, expanded, margin_mm);
+    if t_left > t_right {
+      return None;
     }
   }
 
-  out
-}
-
-#[inline]
-fn steer_around_dynamic(
-  velocity: Vec2f, self_pos: Vec2f, self_vel: Vec2f, obstacle_pos: Vec2f, obstacle_vel: Vec2f,
-  radius_mm: f32, influence_mm: f32, horizon_s: f32, weight: f32,
-) -> Vec2f {
-  let rel_pos = obstacle_pos - self_pos;
-  let rel_vel = velocity - obstacle_vel;
-  let rel_speed_sq = dot(rel_vel, rel_vel).max(1f32);
-  let mut t_star = -dot(rel_pos, rel_vel) / rel_speed_sq;
-  t_star = t_star.clamp(0f32, horizon_s);
-
-  let closest: Vec2f = rel_pos + rel_vel.scale(t_star);
-  let closest_dist = closest.norm();
-  let current_dist = rel_pos.norm();
-  let threshold = radius_mm.max(1f32);
-  let mut correction = Vec2f::new(0f32, 0f32);
-
-  if closest_dist < influence_mm || current_dist < threshold {
-    let away = if closest_dist > 1f32 {
-      closest.scale(-1f32 / closest_dist)
-    } else if current_dist > 1f32 {
-      rel_pos.scale(-1f32 / current_dist)
-    } else if self_vel.norm() > 1f32 {
-      self_vel.scale(-1f32 / self_vel.norm())
+  let t = if direction_opt {
+    if opt_velocity.dot(line.direction) > 0.0 {
+      t_right
     } else {
-      Vec2f::new(1f32, 0f32)
-    };
-
-    let lateral = Vec2f::new(-rel_pos.y, rel_pos.x).normalized();
-    let dodge_dir = if rel_pos.y.abs() < radius_mm * 0.5 {
-      lateral
-    } else {
-      away
-    };
-
-    let closeness = if closest_dist < influence_mm {
-      (influence_mm - closest_dist) / influence_mm
-    } else {
-      0f32
-    };
-    let overlap = if current_dist < threshold {
-      (threshold - current_dist).max(0f32) / threshold
-    } else {
-      0f32
-    };
-
-    let urgency = (closeness + overlap).clamp(0f32, 1.5);
-    let speed_push = 0.7 * influence_mm + 1_300f32 * urgency;
-    correction = dodge_dir.scale(speed_push * weight);
-  }
-
-  velocity + correction
-}
-
-#[inline]
-fn steer_around_rect(
-  velocity: Vec2f, self_pos: Vec2f, rect: Rect, influence_mm: f32, max_speed_mm_s: f32,
-) -> Vec2f {
-  let nearest = clamp_point(self_pos, rect);
-  let offset = self_pos - nearest;
-  let dist = offset.norm();
-  let inside = point_in_rect(self_pos, rect);
-
-  if !inside && dist >= influence_mm {
-    return velocity;
-  }
-
-  let dir = if inside {
-    rect_escape_direction(self_pos, rect)
-  } else if dist > 1f32 {
-    offset.scale(1f32 / dist)
+      t_left
+    }
   } else {
-    rect_escape_direction(self_pos, rect)
+    let t_opt = line.direction.dot(opt_velocity - line.point);
+    if t_opt < t_left {
+      t_left
+    } else if t_opt > t_right {
+      t_right
+    } else {
+      t_opt
+    }
   };
 
-  let strength = if inside {
-    1.4 + ((influence_mm - dist).max(0f32) / influence_mm)
-  } else {
-    ((influence_mm - dist).max(0f32) / influence_mm).clamp(0f32, 1f32)
-  };
-
-  velocity + dir.scale(max_speed_mm_s * 1.15 * strength)
+  Some(line.point + line.direction * t)
 }
 
-#[inline]
-fn rect_escape_direction(point: Vec2f, rect: Rect) -> Vec2f {
-  let to_left = (point.x - rect.min_x).abs();
-  let to_right = (rect.max_x - point.x).abs();
-  let to_bottom = (point.y - rect.min_y).abs();
-  let to_top = (rect.max_y - point.y).abs();
+fn linear_program_3(lines: &[Line], num_obst_lines: usize, begin_line: usize, radius: f64, result: &mut Vec2) {
+  let mut distance = 0.0;
+  for i in begin_line..lines.len() {
+    let line_i = &lines[i];
+    let violation = line_i.direction.det(line_i.point - *result);
+    if violation > distance {
+      // Recompute result by projecting onto intersection of previous constraints and line i.
+      let mut proj_lines: Vec<Line> = Vec::with_capacity(i + 1);
+      proj_lines.extend_from_slice(&lines[..num_obst_lines.min(lines.len())]);
 
-  if to_left <= to_right && to_left <= to_bottom && to_left <= to_top {
-    Vec2f::new(-1f32, 0f32)
-  } else if to_right <= to_bottom && to_right <= to_top {
-    Vec2f::new(1f32, 0f32)
-  } else if to_bottom <= to_top {
-    Vec2f::new(0f32, -1f32)
-  } else {
-    Vec2f::new(0f32, 1f32)
+      for j in num_obst_lines..i {
+        let line_j = &lines[j];
+        let determinant = line_i.direction.det(line_j.direction);
+        let mut point: Vec2 = Vec2::default();
+        if determinant.abs() <= 1e-12 {
+          // Parallel lines: if they point the same way, skip; else take midpoint.
+          if line_i.direction.dot(line_j.direction) > 0.0 {
+            continue;
+          }
+          let _ = (line_i.point + line_j.point) * 0.5;
+        } else {
+          let t = line_j.direction.det(line_i.point - line_j.point) / determinant;
+          point = line_i.point + line_i.direction * t;
+        }
+
+        let direction = (line_j.direction - line_i.direction).normalize();
+        proj_lines.push(Line { point, direction });
+      }
+
+      let temp_result = *result;
+      let perp = Vec2::new(-line_i.direction.y, line_i.direction.x);
+      let fail = linear_program_2(&proj_lines, radius, perp, true, result);
+      if fail < proj_lines.len() {
+        *result = temp_result;
+      }
+      distance = line_i.direction.det(line_i.point - *result);
+    }
   }
-}
-
-#[inline]
-fn project_outside_rect(point: Vec2f, rect: Rect, margin_mm: f32) -> Vec2f {
-  let mut out = point;
-  let push = margin_mm.max(1f32);
-  let to_left = (point.x - rect.min_x).abs();
-  let to_right = (rect.max_x - point.x).abs();
-  let to_bottom = (point.y - rect.min_y).abs();
-  let to_top = (rect.max_y - point.y).abs();
-
-  if to_left <= to_right && to_left <= to_bottom && to_left <= to_top {
-    out.x = rect.min_x - push;
-  } else if to_right <= to_bottom && to_right <= to_top {
-    out.x = rect.max_x + push;
-  } else if to_bottom <= to_top {
-    out.y = rect.min_y - push;
-  } else {
-    out.y = rect.max_y + push;
-  }
-
-  out
-}
-
-#[inline]
-fn penalty_rects(cfg: &Config) -> [Rect; 2] {
-  let half_length = cfg.field.width_mm() * 0.5;
-  let half_width = cfg.field.height_mm() * 0.5;
-  let depth = cfg.field.penalty_area_height_mm().max(1f32);
-  let width = cfg.field.penalty_area_width_mm().max(1f32) * 0.5;
-  let y_min = (-width).max(-half_width);
-  let y_max = width.min(half_width);
-
-  [
-    Rect {
-      min_x: -half_length,
-      max_x: -half_length + depth,
-      min_y: y_min,
-      max_y: y_max,
-    },
-    Rect {
-      min_x: half_length - depth,
-      max_x: half_length,
-      min_y: y_min,
-      max_y: y_max,
-    },
-  ]
-}
-
-#[inline]
-fn expand_rect(rect: Rect, margin_mm: f32) -> Rect {
-  Rect {
-    min_x: rect.min_x - margin_mm,
-    max_x: rect.max_x + margin_mm,
-    min_y: rect.min_y - margin_mm,
-    max_y: rect.max_y + margin_mm,
-  }
-}
-
-#[inline]
-fn point_in_rect(point: Vec2f, rect: Rect) -> bool {
-  point.x >= rect.min_x && point.x <= rect.max_x && point.y >= rect.min_y && point.y <= rect.max_y
-}
-
-#[inline]
-fn clamp_point(point: Vec2f, rect: Rect) -> Vec2f {
-  Vec2f::new(
-    point.x.clamp(rect.min_x, rect.max_x),
-    point.y.clamp(rect.min_y, rect.max_y),
-  )
-}
-
-#[inline]
-fn is_yellow_team(cfg: &Config) -> bool {
-  cfg.robot_team.eq_ignore_ascii_case("yellow")
-}
-
-#[inline]
-fn robot_velocity(robot: CpTrackedRobot) -> Vec2f {
-  robot.vel.map_or(Vec2f::new(0f32, 0f32), Vec2f::new_from_cp)
-}
-
-#[inline]
-fn dot(a: Vec2f, b: Vec2f) -> f32 {
-  a.x * b.x + a.y * b.y
-}
-
-#[inline]
-fn clamp_magnitude(v: Vec2f, max: f32) -> Vec2f {
-  let n = v.norm();
-  if n <= max || n <= 1e-6 {
-    v
-  } else {
-    v.scale(max / n)
-  }
-}
-
-#[inline]
-fn normalize_deg(mut deg: f32) -> f32 {
-  while deg < 0f32 {
-    deg += 360f32;
-  }
-  while deg >= 360f32 {
-    deg -= 360f32;
-  }
-  deg
-}
-
-#[inline]
-fn velocity_to_direction_deg(velocity: Vec2f) -> f32 {
-  let speed = velocity.norm();
-  if speed <= 1f32 {
-    return 0f32;
-  }
-
-  normalize_deg(velocity.y.atan2(velocity.x).to_degrees())
-}
-
-#[inline]
-fn velocity_to_teensy_dir(velocity: Vec2f) -> u16 {
-  velocity_to_direction_deg(velocity)
-    .round()
-    .clamp(0f32, 359f32) as u16
 }
 
 #[cfg(test)]
 mod tests {
   use super::*;
 
-  fn sample_config() -> Config {
-    Config::default()
-  }
-
-  fn sample_robot(x: i32, y: i32, orientation: i32, vel: Option<(i32, i32)>) -> CpTrackedRobot {
-    CpTrackedRobot {
-      robot_id: 7,
-      pos: CpVector2 { x, y },
-      orientation,
-      vel: vel.map(|(x, y)| CpVector2 { x, y }),
-    }
-  }
-
-  fn sample_cp(robot_self: CpTrackedRobot) -> CpRobot {
-    CpRobot {
-      robot_id: 7,
-      timestamp: Default::default(),
-      packet_id: 1,
-      ball: crate::proto::CpBall {
-        pos: CpVector2 { x: 0, y: 0 },
-        vel: Some(CpVector2 { x: 0, y: 0 }),
-      },
-      robots_yellow: vec![robot_self],
-      robots_blue: vec![],
-      cmd: Default::default(),
-    }
+  #[test]
+  fn clamp_speed() {
+    let v = Vec2i::new(3000, 0).with_speed_clamped(1000);
+    assert!(v.x.abs() <= 1000);
+    assert_eq!(v.y, 0);
   }
 
   #[test]
-  fn converts_velocity_to_teensy_message() {
-    let robot_self = sample_robot(0, 0, 0, Some((0, 0)));
-    let plan = OrcaPlan {
-      velocity: Vec2f::new(1_000f32, 0f32),
-      target: Vec2f::new(1_000f32, 0f32),
-      target_distance_mm: 1_000f32,
-      speed_mm_s: 1_000f32,
-      direction_deg: 0f32,
-      current_speed_mm_s: 0f32,
-      accel_hint_mm_s2: 0f32,
-      decel_hint_mm_s2: 0f32,
+  fn repulsion_pushes_away() {
+    let params = OrcaParams {
+      run_blocking: false,
+      ..Default::default()
     };
-
-    let msg = orca_to_teensy(TeensySendMsg::default(), &plan, robot_self);
-    assert_eq!(msg.speed, 1_000);
+    let world = WorldSnapshot {
+      now: Instant::now(),
+      self_id: 1,
+      self_pos_mm: Vec2i::new(0, 0),
+      self_vel_mm_s: Vec2i::default(),
+      self_orientation: None,
+      others: vec![OtherRobot {
+        id: 2,
+        pos_mm: Vec2i::new(100, 0),
+        vel_mm_s: Vec2i::default(),
+        radius_mm: 90,
+      }],
+    };
+    let preferred = Vec2i::new(1000, 0);
+    let out = orca_step(&params, &world, preferred, 1000);
+    assert!(out.len_sq_i64() <= (1000i64 * 1000i64) + 10);
+    // With an obstacle directly ahead, ORCA shouldn't accelerate into it.
+    assert!(out.x <= preferred.x);
   }
 
   #[test]
-  fn direction_uses_x_as_zero_degrees() {
-    assert_eq!(velocity_to_teensy_dir(Vec2f::new(1_000f32, 0f32)), 0);
-    assert_eq!(velocity_to_teensy_dir(Vec2f::new(0f32, 1_000f32)), 90);
-    assert_eq!(velocity_to_teensy_dir(Vec2f::new(-1_000f32, 0f32)), 180);
-    assert_eq!(velocity_to_teensy_dir(Vec2f::new(0f32, -1_000f32)), 270);
-  }
+  fn orca_result_satisfies_halfplanes() {
+    let params = OrcaParams {
+      run_blocking: false,
+      ..Default::default()
+    };
+    let world = WorldSnapshot {
+      now: Instant::now(),
+      self_id: 1,
+      self_pos_mm: Vec2i::new(0, 0),
+      self_vel_mm_s: Vec2i::new(1000, 0),
+      self_orientation: None,
+      others: vec![
+        OtherRobot {
+          id: 2,
+          pos_mm: Vec2i::new(600, 0),
+          vel_mm_s: Vec2i::default(),
+          radius_mm: 90,
+        },
+        OtherRobot {
+          id: 3,
+          pos_mm: Vec2i::new(600, 250),
+          vel_mm_s: Vec2i::default(),
+          radius_mm: 90,
+        },
+      ],
+    };
+    let preferred = Vec2i::new(1200, 0);
+    let out = orca_step(&params, &world, preferred, 1200);
 
-  #[test]
-  fn direction_is_field_global_not_robot_relative() {
-    let _robot_self = sample_robot(0, 0, 90, Some((0, 0)));
-    assert_eq!(velocity_to_teensy_dir(Vec2f::new(1_000f32, 0f32)), 0);
-    assert_eq!(velocity_to_teensy_dir(Vec2f::new(0f32, 1_000f32)), 90);
-  }
-
-  #[test]
-  fn avoids_robots_in_front() {
-    let robot_self = sample_robot(0, 0, 0, Some((0, 0)));
-    let mut cp = sample_cp(robot_self);
-    let mut obstacle = sample_robot(500, 0, 0, Some((0, 0)));
-    obstacle.robot_id = 42;
-    cp.robots_blue = vec![obstacle];
-
-    let plan = drive_to_target(
-      &sample_config(),
-      &cp,
-      robot_self,
-      CpVector2 { x: 1_000, y: 0 },
-      OrcaOptions {
-        avoid_ball: false,
-        avoid_penalty_area: false,
-        ..OrcaOptions::default()
-      },
+    let self_pos = Vec2::from_i32(world.self_pos_mm);
+    let self_vel = Vec2::from_i32(world.self_vel_mm_s);
+    let lines = create_orca_lines(
+      &params,
+      self_pos,
+      self_vel,
+      &world,
+      (params.time_horizon_ms as f64 / 1000.0).max(0.01),
+      (params.time_step_ms as f64 / 1000.0).max(0.001),
     );
-    assert!(plan.velocity.y.abs() > 1f32 || plan.velocity.x < 700f32);
+    let out_v = Vec2::from_i32(out);
+    for line in lines {
+      // For each constraint, output velocity should be on the valid side (or extremely close).
+      assert!(line.direction.det(line.point - out_v) <= 1e-6);
+    }
   }
 
   #[test]
-  fn pushes_out_of_penalty_area() {
-    let robot_self = sample_robot(-4_100, 0, 0, Some((0, 0)));
-    let cp = sample_cp(robot_self);
-    let plan = drive_to_target(
-      &sample_config(),
-      &cp,
-      robot_self,
-      CpVector2 { x: -4_700, y: 0 },
-      OrcaOptions {
-        avoid_ball: false,
-        ..OrcaOptions::default()
-      },
-    );
-    assert!(plan.velocity.x < 0f32);
+  fn vel_to_dir_speed_deg_1_convention() {
+    assert_eq!(vel_to_dir_speed_deg_1(Vec2i::new(0, 0)), (0, 0));
+    assert_eq!(vel_to_dir_speed_deg_1(Vec2i::new(1000, 0)).0, 0);
+    assert_eq!(vel_to_dir_speed_deg_1(Vec2i::new(0, 1000)).0, 90);
+    assert_eq!(vel_to_dir_speed_deg_1(Vec2i::new(-1000, 0)).0, 180);
+    assert_eq!(vel_to_dir_speed_deg_1(Vec2i::new(0, -1000)).0, 270);
   }
 }
+

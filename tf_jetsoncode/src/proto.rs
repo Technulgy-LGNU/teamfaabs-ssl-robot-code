@@ -21,7 +21,7 @@ pub struct CpTrackedRobot {
   pub orientation: i32,
   /// The velocity \[m/s\] in the ssl-vision coordinate system
   #[prost(message, optional, tag="4")]
-  pub vel: ::core::option::Option<CpVector2>,
+  pub vel: Option<CpVector2>,
   /// The visibility, 0 means not visible, 255 means fully visible, the rest is in between
   #[prost(uint32, required, tag="5")]
   pub visibility: u32,
@@ -63,17 +63,17 @@ pub struct CpCommand {
   #[prost(enumeration="CpTask", required, tag="2")]
   pub task: i32,
   #[prost(message, optional, tag="3")]
-  pub pos: ::core::option::Option<CpVector2>,
+  pub pos: Option<CpVector2>,
   #[prost(uint32, optional, tag="4")]
-  pub speed: ::core::option::Option<u32>,
+  pub speed: Option<u32>,
   #[prost(uint32, optional, tag="5")]
-  pub orientation: ::core::option::Option<u32>,
+  pub orientation: Option<u32>,
   #[prost(uint32, optional, tag="6")]
-  pub kick_orient: ::core::option::Option<u32>,
+  pub kick_orient: Option<u32>,
   #[prost(uint32, optional, tag="7")]
-  pub kick_speed: ::core::option::Option<u32>,
+  pub kick_speed: Option<u32>,
   #[prost(uint32, optional, tag="8")]
-  pub enemy_id: ::core::option::Option<u32>,
+  pub enemy_id: Option<u32>,
 }
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, prost::Enumeration)]
 #[repr(i32)]
@@ -121,7 +121,7 @@ impl CpState {
     }
   }
 }
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, prost::Enumeration)]
 #[repr(i32)]
 pub enum CpTask {
   TaskUnspecified = 0,

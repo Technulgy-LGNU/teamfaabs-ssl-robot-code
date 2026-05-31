@@ -1,9 +1,10 @@
 use crate::communication::{send_flags, TeensySendMsg, VisionMsg};
-use crate::config::Config;
 use crate::proto::{CpRobot, CpTrackedRobot};
-use crate::robot_logic::helpers::{Vec2f, Vec2i, distance_cpv};
+use crate::robot_logic::helpers::{distance_cpv, Vec2f, Vec2i};
 use crate::robot_logic::orca;
-use crate::robot_logic::orca::OrcaOptions;
+use crate::robot_logic::orca::{
+  nav_command_to_teensy, NavIntent, OrcaHandle, OrcaRequest, WorldSnapshot,
+};
 use std::f32::consts::PI;
 
 const MAX_ADD_D: f32 = 0f32; // 220 //300
@@ -13,31 +14,30 @@ const MIN_BALL_VEL: f32 = 700f32;
 /// Function drives near the ball with orca and then tries to get the ball using Junior code
 #[inline]
 pub fn get_ball(
-  cfg: &Config, cp_data: &CpRobot, _vision_data: &VisionMsg, mut msg: TeensySendMsg,
-  robot_self: CpTrackedRobot,
+  cp_data: &CpRobot, _vision_data: &VisionMsg, orca: &OrcaHandle, world: &WorldSnapshot,
+  mut msg: TeensySendMsg, robot_self: CpTrackedRobot,
 ) -> TeensySendMsg {
   let dist = distance_cpv(robot_self.pos, cp_data.ball.pos);
 
   // Check distance to ball, either use orca for long distance or use direct control for taking the ball
   if dist > 500f32 {
-    let plan = orca::drive_to_target(
-      cfg,
-      cp_data,
-      robot_self,
-      cp_data.ball.pos,
-      OrcaOptions {
-        max_speed_mm_s: 1_500f32,
-        stop_radius_mm: 180f32,
-        avoid_ball: false,
-        ..OrcaOptions::default()
-      },
-    );
-    msg = orca::orca_to_teensy(msg, &plan, robot_self);
+    let intent = NavIntent::GoToPosition {
+      target_pos_mm: orca::Vec2i::new(cp_data.ball.pos.x, cp_data.ball.pos.y),
+      max_speed_mm_s: 2500,
+    };
+    orca.publish(OrcaRequest {
+      intent,
+      world: world.clone(),
+    });
+    msg = nav_command_to_teensy(msg, orca.latest());
   } else {
     // Calculate direction to ball as Vec2i
     let ball_pos = Vec2f::new_from_cp(cp_data.ball.pos);
     let ball_vel = Vec2f::new_from_cp(cp_data.ball.vel.unwrap_or_default());
-    let to_ball = Vec2i::calculate_vector_2i(robot_self.pos, (ball_pos+ball_vel.scale(0.005f32)).vec2f_to_cp());
+    let to_ball = Vec2i::calculate_vector_2i(
+      robot_self.pos,
+      (ball_pos + ball_vel.scale(0.005f32)).vec2f_to_cp(),
+    );
 
     // Transformation vector with respected input angle
     let trans_vector = Vec2f {

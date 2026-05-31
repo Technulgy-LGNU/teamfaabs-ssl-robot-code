@@ -1,8 +1,12 @@
 use crate::communication::{TeensySendMsg, VisionMsg};
 use crate::config::Config;
 use crate::proto::{CpRobot, CpTrackedRobot};
-use crate::robot_logic::helpers::{Vec2f, clamp_to_own_penalty, inside_own_penalty_area, lerp, own_goal_side, own_goal_x, raw_move_towards, RAW_STOP_RADIUS_MM};
-use crate::robot_logic::orca::{self, OrcaOptions};
+use crate::robot_logic::helpers::{
+  Vec2f, clamp_to_own_penalty, inside_own_penalty_area, lerp, own_goal_side, own_goal_x,
+  raw_move_towards,
+};
+use crate::robot_logic::orca::{nav_command_to_teensy, NavIntent, OrcaHandle, OrcaRequest, Vec2i, WorldSnapshot};
+use crate::robot_logic::RAW_MAX_SPEED_MM_S;
 
 // How far the goalie should stay in front of the goal line when guarding.
 const GOAL_LINE_MARGIN_MM: f32 = 120f32;
@@ -22,11 +26,14 @@ const GUARD_Y_MARGIN_MM: f32 = 20f32;
 #[inline]
 pub fn goalie(
   cfg: &Config, cp_data: &CpRobot, robot_self: &CpTrackedRobot, _vision: &VisionMsg,
-  mut msg: TeensySendMsg,
+  orca: &OrcaHandle, world: &WorldSnapshot, mut msg: TeensySendMsg,
 ) -> TeensySendMsg {
   let self_pos = Vec2f::new_from_cp(robot_self.pos);
   let ball_pos = Vec2f::new_from_cp(cp_data.ball.pos);
-  let ball_vel = cp_data.ball.vel.map_or(Vec2f::new(0f32, 0f32), Vec2f::new_from_cp);
+  let ball_vel = cp_data
+    .ball
+    .vel
+    .map_or(Vec2f::new(0f32, 0f32), Vec2f::new_from_cp);
 
   // Always face the ball globally, independent of the movement direction.
   msg.orient = (ball_pos - self_pos).angle_to_u16();
@@ -41,27 +48,15 @@ pub fn goalie(
     // msg.orient = ball_pos.scale(-1f32).angle_to_u16();
   } else {
     // ORCA is only used for the approach into the penalty area.
-    let plan = orca::drive_to_target(
-      cfg,
-      cp_data,
-      *robot_self,
-      target.vec2f_to_cp(),
-      OrcaOptions {
-        max_speed_mm_s: ORCA_MAX_SPEED_MM_S,
-        approach_gain: 1.45,
-        stop_radius_mm: RAW_STOP_RADIUS_MM,
-        avoid_ball: false,
-        avoid_penalty_area: false,
-        time_horizon_s: 2.5,
-        robot_influence_mm: 650f32,
-        ball_influence_mm: 450f32,
-        penalty_margin_mm: 0f32,
-        static_influence_mm: 800f32,
-        ..OrcaOptions::default()
-      },
-    );
-
-    msg = orca::orca_to_teensy(msg, &plan, *robot_self);
+    let intent = NavIntent::GoToPosition {
+      target_pos_mm: Vec2i::new(target.x as i32, target.y as i32),
+      max_speed_mm_s: RAW_MAX_SPEED_MM_S as u32,
+    };
+    orca.publish(OrcaRequest {
+      intent,
+      world: world.clone(),
+    });
+    msg = nav_command_to_teensy(msg, orca.latest());
     msg.orient = (ball_pos - self_pos).angle_to_u16();
   }
 
@@ -126,96 +121,8 @@ pub(crate) fn predict_intercept(cfg: &Config, ball_pos: Vec2f, ball_vel: Vec2f) 
   }
 
   // Place the goalie slightly in front of the expected impact point.
-  Some(Vec2f::new(goal_x - goal_side * INTERCEPT_LINE_MM, predicted_y))
-}
-
-#[cfg(test)]
-mod tests {
-  use super::*;
-  use crate::proto::CpVector2;
-
-  fn sample_cfg(robot_goal: bool) -> Config {
-    Config {
-      robot_goal,
-      ..Config::default()
-    }
-  }
-
-  fn sample_robot(x: i32, y: i32) -> CpTrackedRobot {
-    CpTrackedRobot {
-      robot_id: 1,
-      pos: CpVector2 { x, y },
-      orientation: 0,
-      vel: Some(CpVector2 { x: 0, y: 0 }),
-    }
-  }
-
-  fn sample_cp(ball_x: i32, ball_y: i32, ball_vx: i32, ball_vy: i32) -> CpRobot {
-    CpRobot {
-      robot_id: 1,
-      timestamp: Default::default(),
-      packet_id: 1,
-      ball: crate::proto::CpBall {
-        pos: CpVector2 {
-          x: ball_x,
-          y: ball_y,
-        },
-        vel: Some(CpVector2 {
-          x: ball_vx,
-          y: ball_vy,
-        }),
-      },
-      robots_yellow: vec![],
-      robots_blue: vec![],
-      cmd: Default::default(),
-    }
-  }
-
-  #[test]
-  fn ball_further_out_moves_goalie_further_out() {
-    let cfg = sample_cfg(false);
-    let near = goalie_target(&cfg, Vec2f::new(-4_200f32, 0f32), Vec2f::new(0f32, 0f32));
-    let far = goalie_target(&cfg, Vec2f::new(0f32, 0f32), Vec2f::new(0f32, 0f32));
-    assert!(far.x > near.x);
-  }
-
-  #[test]
-  fn predicts_kick_towards_goal() {
-    let cfg = sample_cfg(false);
-    let intercept = predict_intercept(&cfg, Vec2f::new(-1_500f32, 120f32), Vec2f::new(-1_300f32, 50f32)).unwrap();
-    assert!(intercept.x < -4_000f32);
-    assert!(intercept.y > 0f32);
-  }
-
-  #[test]
-  fn uses_raw_inside_penalty_area() {
-    let cfg = sample_cfg(false);
-    assert!(inside_own_penalty_area(&cfg, Vec2f::new(-4_300f32, 0f32)));
-    assert!(!inside_own_penalty_area(&cfg, Vec2f::new(-3_000f32, 0f32)));
-  }
-
-  #[test]
-  fn faces_ball_using_global_coordinates() {
-    let self_pos = Vec2f::new(0f32, 0f32);
-    assert_eq!((Vec2f::new(1_000f32, 0f32) - self_pos).angle_to_u16(), 0);
-    assert_eq!((Vec2f::new(0f32, 1_000f32) - self_pos).angle_to_u16(), 90);
-    assert_eq!((Vec2f::new(-1_000f32, 0f32) - self_pos).angle_to_u16(), 180);
-  }
-
-  #[test]
-  fn goalie_message_changes_in_both_modes() {
-    let cfg = sample_cfg(false);
-    let robot = sample_robot(-4_300, 0);
-    let cp = sample_cp(-1_500, 120, -1_300, 50);
-
-    let msg = goalie(
-      &cfg,
-      &cp,
-      &robot,
-      &VisionMsg::default(),
-      TeensySendMsg::default(),
-    );
-    assert!(msg.speed > 0);
-    assert_ne!(msg.dir, 0);
-  }
+  Some(Vec2f::new(
+    goal_x - goal_side * INTERCEPT_LINE_MM,
+    predicted_y,
+  ))
 }

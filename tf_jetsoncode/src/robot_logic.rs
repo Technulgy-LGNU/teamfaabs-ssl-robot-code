@@ -1,17 +1,19 @@
 use crate::communication::{TeensySendMsg, VisionMsg, send_flags};
 use crate::config;
 use crate::proto::{CpRobot, CpTrackedRobot};
-use crate::robot_logic::helpers::{Vec2f, distance_cpv};
-use crate::robot_logic::orca::OrcaOptions;
-use tracing::info;
 use crate::robot_logic::get_ball::get_ball;
+use crate::robot_logic::helpers::{Vec2f, distance_cpv};
+use crate::robot_logic::orca::{
+  NavIntent, OrcaHandle, OrcaRequest, Vec2i, WorldSnapshot, nav_command_to_teensy,
+};
 use crate::robot_logic::receive_ball::receive_ball;
+use tracing::info;
 
+mod get_ball;
 pub mod goalie;
 pub mod helpers;
 pub mod orca;
 mod receive_ball;
-mod get_ball;
 
 // If we are inside this distance in the penalty area, stop using raw motion.
 pub(crate) const RAW_STOP_RADIUS_MM: f32 = 40f32;
@@ -20,9 +22,9 @@ pub(crate) const RAW_STOP_RADIUS_MM: f32 = 40f32;
 pub(crate) const RAW_MAX_SPEED_MM_S: f32 = 4_000f32;
 
 #[inline]
-pub async fn command(
-  cfg: &config::Config, cp_data: &CpRobot, vision_data: &VisionMsg, mut msg: TeensySendMsg,
-  stop: bool, robot_self: CpTrackedRobot,
+pub fn command(
+  cp_data: &CpRobot, vision_data: &VisionMsg, orca: &OrcaHandle, world: &WorldSnapshot,
+  mut msg: TeensySendMsg, stop: bool, robot_self: CpTrackedRobot,
 ) -> TeensySendMsg {
   // Vars
   let robot_pos = Vec2f::new_from_cp(robot_self.pos);
@@ -47,18 +49,17 @@ pub async fn command(
       if distance_cpv(robot_self.pos, cp_data.cmd.pos.unwrap_or_default()) < 10.0 {
         msg.speed = 0;
       } else {
-        let plan = orca::drive_to_target(
-          cfg,
-          cp_data,
-          robot_self,
-          cp_data.cmd.pos.unwrap_or_default(),
-          OrcaOptions {
-            max_speed_mm_s: max_speed_mm_s as f32,
-            avoid_ball: stop,
-            ..OrcaOptions::default()
-          },
-        );
-        msg = orca::orca_to_teensy(msg, &plan, robot_self);
+        let nav_intent = NavIntent::GoToPosition {
+          target_pos_mm: Vec2i::new_from_cp(cp_data.cmd.pos.unwrap_or_default()),
+          max_speed_mm_s,
+        };
+        orca.publish(OrcaRequest {
+          intent: nav_intent,
+          world: world.clone(),
+        });
+
+        let plan = orca.latest();
+        msg = nav_command_to_teensy(msg, plan);
       }
 
       msg.orient = cp_data.cmd.orientation.unwrap_or_default() as u16;
@@ -106,7 +107,7 @@ pub async fn command(
     }
     5 => {
       // Steal Ball
-      msg = get_ball(cfg, cp_data, vision_data, msg, robot_self);
+      msg = get_ball(cp_data, vision_data, orca, world, msg, robot_self);
     }
     6 => {
       // Dribble the Ball

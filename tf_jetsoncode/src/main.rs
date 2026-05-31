@@ -3,9 +3,10 @@ use crate::communication::{communication_receiver, send_flags};
 use crate::proto::RobotCp;
 use crate::robot_logic::command;
 use crate::robot_logic::goalie::goalie;
+use crate::robot_logic::helpers::{Vec2f, inside_field};
+use crate::robot_logic::orca::{OrcaHandle, OrcaParams, WorldSnapshot};
 use std::time::Duration;
 use tracing::info;
-use crate::robot_logic::helpers::{inside_field, Vec2f};
 
 mod communication;
 mod config;
@@ -48,6 +49,17 @@ async fn main() {
         panic!("Failed to create udp socket for sending cp data: {}", e);
       }
     };
+
+  // Orca Params & Handlers
+  let params = OrcaParams {
+    time_horizon_ms: 500, 
+    safety_margin_mm: 30,
+    default_robot_radius_mm: 90,
+    time_step_ms: 1,
+    responsibility: 2.0,
+    run_blocking: true,
+  };
+  let orca = OrcaHandle::spawn(params);
 
   // Starting robot
   info!("Starting robot ...");
@@ -101,6 +113,13 @@ async fn main() {
       panic!("Unknown team: {}", config.robot_team);
     }
 
+    // Orca
+    let world = WorldSnapshot::from_cp(
+      &cp_data,
+      config.robot_id as u32,
+      params.default_robot_radius_mm,
+    );
+
     // Buttons
     // React to button presses
     for i in 0..15 {
@@ -136,7 +155,15 @@ async fn main() {
       2 => {
         // Robot is allowed to move with a max speed of
         // 1,5m/s (1500mm/s) & stay away from ball 500mm
-        robot_msg = command(&config, &cp_data, &vision_data, robot_msg, true, robot_self).await;
+        robot_msg = command(
+          &cp_data,
+          &vision_data,
+          &orca,
+          &world,
+          robot_msg,
+          true,
+          robot_self,
+        );
 
         robot_msg.self_orient = orient as u16;
         robot_msg.orient = cp_data.cmd.orientation.unwrap_or_default() as u16;
@@ -144,18 +171,18 @@ async fn main() {
       3 => {
         // Free to listen to commands
         robot_msg = command(
-          &config,
           &cp_data,
           &vision_data,
+          &orca,
+          &world,
           robot_msg,
           false,
           robot_self,
         )
-        .await;
       }
       4 => {
         // Goalie, move into penalty area and protect the goal
-        robot_msg = goalie(&config, &cp_data, &robot_self, &vision_data, robot_msg);
+        robot_msg = goalie(&config, &cp_data, &robot_self, &vision_data, &orca, &world, robot_msg);
       }
       5 => {
         // Substitute
@@ -191,7 +218,7 @@ async fn main() {
     // info!("{:?}", robot_msg.flags.to_le_bytes().iter().copied().collect::<Vec<_>>());
 
     // Print Self velocity in mm/s
-    //info!("Self Velocity: {:?}", ((robot_self.vel.unwrap_or_default().x*robot_self.vel.unwrap_or_default().x+robot_self.vel.unwrap_or_default().y*robot_self.vel.unwrap_or_default().y) as f32).sqrt());
+    info!("Self Velocity: {:?}", ((robot_self.vel.unwrap_or_default().x*robot_self.vel.unwrap_or_default().x+robot_self.vel.unwrap_or_default().y*robot_self.vel.unwrap_or_default().y) as f32).sqrt());
 
     let buf = robot_msg.encode();
     tx.publish(buf).await;
