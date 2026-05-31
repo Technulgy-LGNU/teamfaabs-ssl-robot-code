@@ -296,20 +296,12 @@ pub struct OrcaParams {
   /// If you want to be more conservative (treat others as non-cooperative obstacles),
   /// increase this towards 1.0.
   pub responsibility: f64,
+  /// Maximum change in translational velocity per second.
+  pub max_accel_mm_s2: u32,
+  /// Maximum change in translational velocity when slowing down per second.
+  pub max_decel_mm_s2: u32,
   /// If true, compute runs on the blocking pool (`spawn_blocking`).
   pub run_blocking: bool,
-  /*
-  •
-max_speed_mm_s in NavIntent → caps desired speed.
-•
-time_horizon_ms → bigger = reacts earlier/more conservatively; smaller = later/more abrupt avoidance.
-•
-safety_margin_mm → bigger = starts avoiding sooner, so you’ll slow/turn earlier near others.
-•
-responsibility → higher = you take more of the avoidance burden, so velocity gets pushed away more.
-•
-time_step_ms → only matters when already colliding; smaller steps make the “escape” constraint less aggressive per tick.
-   */
 }
 
 impl Default for OrcaParams {
@@ -320,6 +312,8 @@ impl Default for OrcaParams {
       default_robot_radius_mm: 90,
       time_step_ms: 8,
       responsibility: 0.5,
+      max_accel_mm_s2: 2_800,
+      max_decel_mm_s2: 3_800,
       run_blocking: true,
     }
   }
@@ -358,6 +352,8 @@ impl OrcaHandle {
 
     tokio::spawn(async move {
       // Local worker loop. In a real ORCA implementation you would keep allocations/cache here.
+      let mut last_command_vel = Vec2i::default();
+      let mut last_world_time: Option<Instant> = None;
       loop {
         // Wait for a new request (or channel closed).
         if rx_req.changed().await.is_err() {
@@ -365,12 +361,23 @@ impl OrcaHandle {
         }
         let req = rx_req.borrow().clone();
         let start = Instant::now();
+        let req_world_time = req.world.now;
+        let dt_s = last_world_time
+          .map(|t| req_world_time.saturating_duration_since(t).as_secs_f64())
+          .unwrap_or_else(|| (params.time_step_ms as f64 / 1000.0).max(0.001));
 
         // `spawn_blocking` requires a `'static` closure, so capture by value.
         let params = params;
         let compute = move || {
           let (preferred, max_speed) = preferred_velocity(&req.world, req.intent);
-          let vel = orca_step(&params, &req.world, preferred, max_speed);
+          let raw_vel = orca_step(&params, &req.world, preferred, max_speed);
+          let vel = limit_velocity_change(
+            last_command_vel,
+            raw_vel,
+            dt_s,
+            params.max_accel_mm_s2 as f64,
+            params.max_decel_mm_s2 as f64,
+          );
           let debug = OrcaDebug {
             preferred_vel_mm_s: preferred,
             num_neighbors: req.world.others.len(),
@@ -387,6 +394,9 @@ impl OrcaHandle {
         } else {
           compute()
         };
+
+        last_world_time = Some(req_world_time);
+        last_command_vel = cmd.vel_mm_s;
 
         // It's okay if receivers are gone.
         let _ = tx_cmd.send(cmd);
@@ -465,6 +475,34 @@ fn orca_step(params: &OrcaParams, world: &WorldSnapshot, preferred_vel: Vec2i, m
     y: new_vel.y.round() as i32,
   }
     .with_speed_clamped(max_speed_mm_s)
+}
+
+fn limit_velocity_change(previous: Vec2i, desired: Vec2i, dt_s: f64, max_accel_mm_s2: f64, max_decel_mm_s2: f64) -> Vec2i {
+  if dt_s <= 0.0 {
+    return previous;
+  }
+
+  let previous = Vec2::from_i32(previous);
+  let desired = Vec2::from_i32(desired);
+  let delta = desired - previous;
+  let delta_len = delta.abs();
+  if delta_len < 1e-12 {
+    return desired.into();
+  }
+
+  let prev_speed = previous.abs();
+  let desired_speed = desired.abs();
+  let max_delta = if desired_speed >= prev_speed {
+    max_accel_mm_s2
+  } else {
+    max_decel_mm_s2
+  } * dt_s;
+
+  if max_delta <= 0.0 || delta_len <= max_delta {
+    desired.into()
+  } else {
+    (previous + delta / delta_len * max_delta).into()
+  }
 }
 
 // -------------------------------------------------------------------------------------------------
@@ -553,6 +591,15 @@ impl std::ops::Neg for Vec2 {
   type Output = Vec2;
   fn neg(self) -> Self::Output {
     Vec2::new(-self.x, -self.y)
+  }
+}
+
+impl From<Vec2> for Vec2i {
+  fn from(v: Vec2) -> Self {
+    Self {
+      x: v.x.round() as i32,
+      y: v.y.round() as i32,
+    }
   }
 }
 
@@ -868,5 +915,12 @@ mod tests {
     assert_eq!(vel_to_dir_speed_deg_1(Vec2i::new(-1000, 0)).0, 180);
     assert_eq!(vel_to_dir_speed_deg_1(Vec2i::new(0, -1000)).0, 270);
   }
-}
 
+  #[test]
+  fn velocity_change_is_rate_limited() {
+    let prev = Vec2i::new(0, 0);
+    let desired = Vec2i::new(1000, 0);
+    let out = limit_velocity_change(prev, desired, 0.1, 200.0, 400.0);
+    assert_eq!(out, Vec2i::new(20, 0));
+  }
+}

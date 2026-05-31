@@ -16,8 +16,8 @@ mod robot_logic;
 // Constants
 const TEENSY_SEND_MSG_SIZE: usize = 17;
 const TEENSY_RECEIVE_MSG_SIZE: usize = 6;
-const DEFAULT_ACCEL_MM_S2: f32 = 2_800.0;
-const DEFAULT_DECEL_MM_S2: f32 = 3_800.0;
+const DEFAULT_ACCEL_MM_S2: u32 = 4_000;
+const DEFAULT_DECEL_MM_S2: u32 = 6_000;
 
 #[tokio::main]
 async fn main() {
@@ -52,11 +52,13 @@ async fn main() {
 
   // Orca Params & Handlers
   let params = OrcaParams {
-    time_horizon_ms: 500, 
+    time_horizon_ms: 500,
     safety_margin_mm: 30,
     default_robot_radius_mm: 90,
     time_step_ms: 1,
     responsibility: 2.0,
+    max_accel_mm_s2: DEFAULT_ACCEL_MM_S2,
+    max_decel_mm_s2: DEFAULT_DECEL_MM_S2,
     run_blocking: true,
   };
   let orca = OrcaHandle::spawn(params);
@@ -127,10 +129,6 @@ async fn main() {
         println!("Button {} pressed", i);
       }
     }
-
-    // info!("\x1b[32m=================\x1b[0m");
-    // info!("Incoming CP_Data: {:?}", cp_data);
-    // info!("\x1b[32m=================\x1b[0m");
 
     // Clear all flags
     robot_msg.clear_all_flags();
@@ -204,21 +202,6 @@ async fn main() {
     if inside_field(&config, Vec2f::new_from_cp(robot_self.pos)) || robot_self.visibility <= 20 {
       robot_msg.speed = 0;
     }
-
-    // Print data for testing
-    // info!("Direction: {:?}", robot_msg.dir);
-    // info!("Speed: {:?}", robot_msg.speed);
-    // info!(
-    //   "Orientation: {:?}:{:?}",
-    //   robot_msg.orient, cp_data.cmd.orientation
-    // );
-    // info!("Self Dir: {:?}", robot_msg.self_orient);
-
-    // Print flags
-    // info!("{:?}", robot_msg.flags.to_le_bytes().iter().copied().collect::<Vec<_>>());
-
-    // Print Self velocity in mm/s
-    info!("Self Velocity: {:?}", ((robot_self.vel.unwrap_or_default().x*robot_self.vel.unwrap_or_default().x+robot_self.vel.unwrap_or_default().y*robot_self.vel.unwrap_or_default().y) as f32).sqrt());
 
     let buf = robot_msg.encode();
     tx.publish(buf).await;
