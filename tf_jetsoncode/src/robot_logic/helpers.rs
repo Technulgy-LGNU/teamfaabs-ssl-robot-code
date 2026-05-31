@@ -248,11 +248,7 @@ pub(crate) fn raw_move_towards(
 
 #[inline]
 pub(crate) fn raw_movement_accel(dist: f32) -> f32 {
-  let ratio = (dist * 3f32 / RAW_MAX_SPEED_MM_S).clamp(0f32, 1f32);
-
-  let smooth = ratio * ratio * (3f32 - 2f32 * ratio); // smoothstep
-
-  60f32 + smooth * (RAW_MAX_SPEED_MM_S - 60f32)
+  (dist * 3.0).clamp(60.0, RAW_MAX_SPEED_MM_S)
 }
 
 mod test {
