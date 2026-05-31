@@ -1,7 +1,7 @@
 use crate::communication::TeensySendMsg;
-use crate::{config, proto};
 use crate::proto::{CpState, CpVector2};
 pub(crate) use crate::robot_logic::{RAW_MAX_SPEED_MM_S, RAW_STOP_RADIUS_MM};
+use crate::{config, proto};
 use std::ops::{Add, Div, Mul, Sub};
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
@@ -13,10 +13,7 @@ pub struct Vec2i {
 impl Vec2i {
   #[inline]
   pub(crate) fn new(x: i32, y: i32) -> Self {
-    Vec2i {
-      x,
-      y,
-    }
+    Vec2i { x, y }
   }
 
   #[inline]
@@ -36,10 +33,7 @@ impl Vec2i {
 
   #[inline]
   pub(crate) fn calculate_vector_2i(a: CpVector2, b: CpVector2) -> Vec2i {
-    Self::new (
-      a.x - b.x,
-      a.y - b.y,
-    )
+    Self::new(a.x - b.x, a.y - b.y)
   }
 
   #[inline]
@@ -92,14 +86,10 @@ pub struct Vec2f {
   pub(crate) y: f32,
 }
 
-
 impl Vec2f {
   #[inline]
   pub(crate) fn new(x: f32, y: f32) -> Vec2f {
-    Vec2f {
-      x,
-      y,
-    }
+    Vec2f { x, y }
   }
 
   #[inline]
@@ -175,7 +165,6 @@ impl Add for Vec2f {
   }
 }
 
-
 impl Sub for Vec2f {
   type Output = Vec2f;
 
@@ -202,7 +191,6 @@ impl Mul<f32> for Vec2f {
   fn mul(self, rhs: f32) -> Self::Output {
     Vec2f::new(self.x * rhs, self.y * rhs)
   }
-
 }
 
 impl Div for Vec2f {
@@ -231,7 +219,7 @@ pub(crate) fn distance_cpv(a: CpVector2, b: CpVector2) -> f32 {
 
 #[inline]
 pub(crate) fn distance_vec2f(a: Vec2f, b: Vec2f) -> f32 {
-  let c : Vec2f = Vec2f::new(a.x - b.x, a.y - b.y);
+  let c: Vec2f = Vec2f::new(a.x - b.x, a.y - b.y);
   c.norm()
 }
 
@@ -326,11 +314,13 @@ pub(crate) fn ball_avoidance_margin_mm(cp_data: &proto::CpRobot) -> u32 {
 }
 
 pub(crate) fn allow_own_penalty_area(cp_data: &proto::CpRobot) -> bool {
-  matches!(CpState::try_from(cp_data.cmd.state), Ok(CpState::StateGoalie))
+  matches!(
+    CpState::try_from(cp_data.cmd.state),
+    Ok(CpState::StateGoalie)
+  )
 }
 
 mod test {
-
 
   #[test]
   fn test_vec2f_add() {

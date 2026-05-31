@@ -3,7 +3,9 @@ use crate::communication::{communication_receiver, send_flags};
 use crate::proto::{CpState, RobotCp};
 use crate::robot_logic::command;
 use crate::robot_logic::goalie::goalie;
-use crate::robot_logic::helpers::{Vec2f, inside_field, ball_avoidance_margin_mm, allow_own_penalty_area};
+use crate::robot_logic::helpers::{
+  Vec2f, allow_own_penalty_area, ball_avoidance_margin_mm, inside_field,
+};
 use crate::robot_logic::orca::{OrcaHandle, OrcaParams, WorldSnapshot};
 use std::time::Duration;
 use tracing::info;

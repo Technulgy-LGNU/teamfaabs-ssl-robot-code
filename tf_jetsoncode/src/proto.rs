@@ -11,19 +11,19 @@ pub struct CpBall {
 /// A single tracked robot
 #[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct CpTrackedRobot {
-  #[prost(uint32, required, tag="1")]
+  #[prost(uint32, required, tag = "1")]
   pub robot_id: u32,
   /// The position \[mm\] in the ssl-vision coordinate system
-  #[prost(message, required, tag="2")]
+  #[prost(message, required, tag = "2")]
   pub pos: CpVector2,
   /// The orientation \[degree\] in the ssl-vision coordinate system
-  #[prost(int32, required, tag="3")]
+  #[prost(int32, required, tag = "3")]
   pub orientation: i32,
   /// The velocity \[m/s\] in the ssl-vision coordinate system
-  #[prost(message, optional, tag="4")]
+  #[prost(message, optional, tag = "4")]
   pub vel: Option<CpVector2>,
   /// The visibility, 0 means not visible, 255 means fully visible, the rest is in between
-  #[prost(uint32, required, tag="5")]
+  #[prost(uint32, required, tag = "5")]
   pub visibility: u32,
 }
 #[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
@@ -58,21 +58,21 @@ pub struct CpRobot {
 /// The commands as enums and the fields are for stuff like drive to position and kick
 #[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct CpCommand {
-  #[prost(enumeration="CpState", required, tag="1")]
+  #[prost(enumeration = "CpState", required, tag = "1")]
   pub state: i32,
-  #[prost(enumeration="CpTask", required, tag="2")]
+  #[prost(enumeration = "CpTask", required, tag = "2")]
   pub task: i32,
-  #[prost(message, optional, tag="3")]
+  #[prost(message, optional, tag = "3")]
   pub pos: Option<CpVector2>,
-  #[prost(uint32, optional, tag="4")]
+  #[prost(uint32, optional, tag = "4")]
   pub speed: Option<u32>,
-  #[prost(uint32, optional, tag="5")]
+  #[prost(uint32, optional, tag = "5")]
   pub orientation: Option<u32>,
-  #[prost(uint32, optional, tag="6")]
+  #[prost(uint32, optional, tag = "6")]
   pub kick_orient: Option<u32>,
-  #[prost(uint32, optional, tag="7")]
+  #[prost(uint32, optional, tag = "7")]
   pub kick_speed: Option<u32>,
-  #[prost(uint32, optional, tag="8")]
+  #[prost(uint32, optional, tag = "8")]
   pub enemy_id: Option<u32>,
 }
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, prost::Enumeration)]
