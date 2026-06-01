@@ -125,13 +125,24 @@ impl Vec2f {
     self.x * other.x + self.y * other.y
   }
 
-  // #[inline]
-  // pub(crate) fn calculate_vector_2f(a: CpVector2, b: CpVector2) -> Vec2f {
-  //   Self::new(
-  //     (a.x - b.x) as f32,
-  //     (a.y - b.y) as f32,
-  //   )
-  // }
+  #[inline]
+  pub(crate) fn calculate_vector_2f(a: Vec2f, b: Vec2f) -> Self {
+    Self::new(a.x - b.x, a.y - b.y)
+  }
+
+  #[inline]
+  pub(crate) fn angle_from_y_axis(self) -> f32 {
+    let mut angle = self.y.atan2(self.x).to_degrees() - 90f32;
+
+    if angle <= -180f32 {
+      angle += 360f32;
+    }
+    if angle > 180f32 {
+      angle -= 360f32;
+    }
+
+    angle
+  }
 
   #[inline]
   pub(crate) fn vec2f_to_cp(self) -> CpVector2 {

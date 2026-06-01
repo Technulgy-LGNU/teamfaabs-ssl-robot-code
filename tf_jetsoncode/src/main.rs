@@ -53,7 +53,7 @@ async fn main() {
 
   // Orca Params & Handlers
   let params = OrcaParams {
-    time_horizon_ms: 500,
+    time_horizon_ms: 2000,
     safety_margin_mm: 30,
     default_robot_radius_mm: 90,
     time_step_ms: 1,
@@ -122,7 +122,7 @@ async fn main() {
       &cp_data,
       &robot_self,
       params.default_robot_radius_mm,
-      ball_avoidance_margin_mm(&cp_data),
+      ball_avoidance_margin_mm(&cp_data, robot_self),
       allow_own_penalty_area(&cp_data),
     );
 

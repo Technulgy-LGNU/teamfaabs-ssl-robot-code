@@ -1,5 +1,5 @@
 use crate::communication::TeensySendMsg;
-use crate::proto::CpState;
+use crate::proto::{CpState, CpTask, CpTrackedRobot};
 pub(crate) use crate::robot_logic::vec::Vec2f;
 pub(crate) use crate::robot_logic::{RAW_MAX_SPEED_MM_S, RAW_STOP_RADIUS_MM};
 use crate::{config, proto};
@@ -82,9 +82,34 @@ pub(crate) fn raw_movement_accel(dist: f32) -> f32 {
   (dist * 3.0).clamp(60.0, RAW_MAX_SPEED_MM_S)
 }
 
-pub(crate) fn ball_avoidance_margin_mm(cp_data: &proto::CpRobot) -> u32 {
+pub(crate) fn ball_avoidance_margin_mm(
+  cp_data: &proto::CpRobot, robot_self: CpTrackedRobot,
+) -> u32 {
   match CpState::try_from(cp_data.cmd.state).unwrap_or(CpState::StateUnspecified) {
     CpState::StateStop => 550,
+    CpState::StateFree => {
+      match CpTask::try_from(cp_data.cmd.task).unwrap_or_else(|_| CpTask::TaskUnspecified) {
+        CpTask::TaskSteal => {
+          let ball_pos = Vec2f::new_from_cp(cp_data.ball.pos);
+          let robot_pos = Vec2f::new_from_cp(robot_self.pos);
+          let to_ball = Vec2f::calculate_vector_2f(robot_pos, ball_pos);
+          // Transformation vector with respected input angle
+          let trans_vector = Vec2f {
+            x: -to_ball.x * f32::sin((robot_self.orientation as f32).to_radians())
+              + to_ball.y * f32::cos((robot_self.orientation as f32).to_radians()),
+            y: -to_ball.x * f32::cos((robot_self.orientation as f32).to_radians())
+              - to_ball.y * f32::sin((robot_self.orientation as f32).to_radians()),
+          };
+
+          if trans_vector.angle_from_y_axis().abs() > 30f32 {
+            10
+          } else {
+            0
+          }
+        }
+        _ => 0,
+      }
+    }
     _ => 0,
   }
 }
@@ -95,7 +120,6 @@ pub(crate) fn allow_own_penalty_area(cp_data: &proto::CpRobot) -> bool {
     Ok(CpState::StateGoalie)
   )
 }
-
 
 pub fn point_at_distance_from_a(a: Vec2f, b: Vec2f, distance: f32) -> Option<Vec2f> {
   let dx = b.x - a.x;

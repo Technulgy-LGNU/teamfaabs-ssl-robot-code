@@ -6,6 +6,7 @@ use crate::robot_logic::orca::{
   NavIntent, OrcaHandle, OrcaRequest, Vec2i, WorldSnapshot, nav_command_to_teensy,
 };
 
+#[inline]
 pub fn defense_robot(
   cfg: &config::Config, cp_data: &CpRobot, orca: &OrcaHandle, world: &WorldSnapshot,
   mut msg: TeensySendMsg,
@@ -52,6 +53,7 @@ pub fn defense_robot(
   msg
 }
 
+#[inline]
 pub fn defense_goal(
   cfg: &config::Config, cp_data: &CpRobot, orca: &OrcaHandle, world: &WorldSnapshot,
   mut msg: TeensySendMsg,

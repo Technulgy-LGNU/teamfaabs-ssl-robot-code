@@ -1,172 +1,70 @@
 use crate::communication::{TeensySendMsg, VisionMsg, send_flags};
 use crate::proto::{CpRobot, CpTrackedRobot};
-use crate::robot_logic::vec::{Vec2f, Vec2i, distance_cpv};
+use crate::robot_logic::helpers::point_at_distance_from_a;
 use crate::robot_logic::orca::{
   NavIntent, OrcaHandle, OrcaRequest, WorldSnapshot, nav_command_to_teensy,
 };
-use std::f32::consts::PI;
+use crate::robot_logic::vec::{Vec2f, Vec2i};
 
-const MAX_ADD_D: f32 = 0f32; // 220 //300
-const MAX_ADD_A: f32 = 0f32; // 160 //220
-const MIN_BALL_VEL: f32 = 700f32;
-
-/// Function drives near the ball with orca and then tries to get the ball using Junior code
+/// Distance to ball where we switch to direct control
+const BALL_APPROACH_DISTANCE: f32 = 150f32;
+/// Functions drives behind the ball and then drives forward and stops with ball in capturing zone
 #[inline]
 pub fn get_ball(
   cp_data: &CpRobot, _vision_data: &VisionMsg, orca: &OrcaHandle, world: &WorldSnapshot,
   mut msg: TeensySendMsg, robot_self: CpTrackedRobot,
 ) -> TeensySendMsg {
-  let dist = distance_cpv(robot_self.pos, cp_data.ball.pos);
+  let direction_vec = Vec2f::new(
+    f32::cos((cp_data.cmd.orientation.unwrap_or_default() as f32).to_radians()),
+    f32::sin((cp_data.cmd.orientation.unwrap_or_default() as f32).to_radians()),
+  );
+  let robot_pos = Vec2f::new_from_cp(robot_self.pos);
+  let ball_pos = Vec2f::new_from_cp(cp_data.ball.pos);
+  let to_ball = Vec2f::calculate_vector_2f(robot_pos, ball_pos);
+  let capture_zone_to_ball = Vec2f::calculate_vector_2f(ball_pos,robot_pos + direction_vec.scale(80f32)).angle_to_u16();
 
-  // Check distance to ball, either use orca for long distance or use direct control for taking the ball
-  if dist > 500f32 {
-    let intent = NavIntent::GoToPosition {
-      target_pos_mm: Vec2i::new(cp_data.ball.pos.x, cp_data.ball.pos.y),
-      max_speed_mm_s: 2500,
-    };
-    orca.publish(OrcaRequest {
-      intent,
-      world: world.clone(),
-    });
-    msg = nav_command_to_teensy(msg, orca.latest());
-  } else {
-    // Calculate direction to ball as Vec2i
-    let ball_pos = Vec2f::new_from_cp(cp_data.ball.pos);
-    let ball_vel = Vec2f::new_from_cp(cp_data.ball.vel.unwrap_or_default());
-    let to_ball = Vec2i::calculate_vector_2i(
-      robot_self.pos,
-      (ball_pos + ball_vel.scale(0.005f32)).vec2f_to_cp(),
-    );
 
-    // Transformation vector with respected input angle
-    let trans_vector = Vec2f {
-      x: -to_ball.x as f32 * f32::sin((robot_self.orientation as f32).to_radians())
-        + to_ball.y as f32 * f32::cos((robot_self.orientation as f32).to_radians()),
-      y: -to_ball.x as f32 * f32::cos((robot_self.orientation as f32).to_radians())
-        - to_ball.y as f32 * f32::sin((robot_self.orientation as f32).to_radians()),
-    };
-
-    let mut comp_dir: f32;
-    let x_c: f32 = 100f32;
-    let y_c: f32 = 0f32;
-    let d: f32 = 160f32;
-
-    if trans_vector.x < 0f32 {
-      comp_dir = compute_vector_angle(x_c, y_c, d, -trans_vector.x, -trans_vector.y).to_degrees();
-    } else {
-      comp_dir =
-        180f32 - compute_vector_angle(x_c, y_c, d, trans_vector.x, -trans_vector.y).to_degrees();
-    }
-
-    if (trans_vector.x < 25f32)
-      && (trans_vector.x > -25f32)
-      && (trans_vector.y < 100f32)
-      && (trans_vector.y > 0f32)
-    {
-      comp_dir = 90f32;
-    }
-
-    comp_dir = comp_dir - 90f32 + robot_self.orientation as f32;
-
-    while comp_dir.is_sign_negative() {
-      comp_dir += 360f32;
-    }
-
-    // Speed
-    let abs_ball_angle = 90f32 - trans_vector.y.atan2(trans_vector.x).to_degrees().abs();
-    let help_d_vel = ((trans_vector.norm() * 0.1).powf(4.2) / 70000f32).min(MAX_ADD_D);
-    let help_a_vel = (abs_ball_angle * 0.15).powf(1.3).min(MAX_ADD_A); // 0.15 1.6
-    let target_v = MIN_BALL_VEL + help_d_vel + help_a_vel;
-
-    // Set Teensy message
-    msg.dir = comp_dir as u16;
-    msg.speed = target_v as u16;
+  // Check based on the distance, if dribbler should be enabled
+  if to_ball.norm() < 200f32 {
+    msg.set_flag(send_flags::DRIBBLER);
+    msg.dribbler_pwr = 200;
   }
-  // Enable Dribbler
-  msg.set_flag(send_flags::DRIBBLER);
-  msg.dribbler_pwr = 200;
-  // Set orientation
+
+  // First check, if we already are in front of the ball, if yes, move forwards
+  // Transformation vector with respected input angle
+  let trans_vector = Vec2f {
+    x: -to_ball.x * f32::sin((robot_self.orientation as f32).to_radians())
+      + to_ball.y * f32::cos((robot_self.orientation as f32).to_radians()),
+    y: -to_ball.x * f32::cos((robot_self.orientation as f32).to_radians())
+      - to_ball.y * f32::sin((robot_self.orientation as f32).to_radians()),
+  };
+  if trans_vector.y.is_sign_positive() && trans_vector.x.abs() < 15f32 {
+    msg.dir = cp_data.cmd.orientation.unwrap_or_default() as u16;
+    msg.speed = 500;
+
+    return msg;
+  } else if trans_vector.y.is_sign_positive() && trans_vector.x.abs() < 35f32 {
+    msg.dir = capture_zone_to_ball;
+    msg.speed = 500;
+
+    return msg;
+  }
+
+  // else move behind the ball
+  let target = point_at_distance_from_a(ball_pos, ball_pos - direction_vec, BALL_APPROACH_DISTANCE)
+    .unwrap_or(ball_pos);
+
+  let intent = NavIntent::GoToPosition {
+    target_pos_mm: Vec2i::new(target.x as i32, target.y as i32),
+    max_speed_mm_s: cp_data.cmd.speed.unwrap_or_default(),
+  };
+  orca.publish(OrcaRequest {
+    intent,
+    world: world.clone(),
+  });
+
+  msg = nav_command_to_teensy(msg, orca.latest());
+  msg.speed = msg.speed.max(500);
   msg.orient = cp_data.cmd.orientation.unwrap_or_default() as u16;
   msg
-}
-
-/// Arduino constraint()
-#[inline]
-fn constrain(value: f32, min: f32, max: f32) -> f32 {
-  value.clamp(min, max)
-}
-
-/// Calculate the angle from a vector relative to a circle
-fn compute_vector_angle(x_c: f32, y_c: f32, r: f32, x: f32, y: f32) -> f32 {
-  // Distance to circle center
-  let mut d = (x - x_c).hypot(y - y_c);
-
-  // Avoid dividing through zero
-  if d.is_nan() || d == 0f32 {
-    d = 1e-6;
-  }
-
-  let angle;
-
-  if d > r {
-    // Calculate tangential angle
-    let theta = (y - y_c).atan2(x - x_c);
-
-    let alpha = constrain(r / d, -1f32, 1f32).asin();
-
-    // Calculate angle of tangent
-    angle = PI + theta + alpha;
-  } else {
-    // Calculate mirror
-    let theta = (y - y_c).atan2(x - x_c);
-
-    // Point in circle
-    let i_c_x = theta.cos() * d;
-    let i_c_y = theta.sin() * d;
-
-    // Mirror point
-    let o_c_x = theta.cos() * (2f32 * r - d);
-    let o_c_y = theta.sin() * (2f32 * r - d);
-
-    // If value is NaN, return 0
-    if i_c_x.is_nan() || i_c_y.is_nan() || o_c_x.is_nan() || o_c_y.is_nan() {
-      return 0f32;
-    }
-
-    // Calculate mirror matrix
-    let theta3 = (i_c_y - y_c).atan2(i_c_x - x_c);
-
-    let s11 = (2f32 * theta3).cos();
-    let s12 = (2f32 * theta3).sin();
-    let s21 = (2f32 * theta3).sin();
-    let s22 = -(2f32 * theta3).cos();
-
-    // Mirrored tangential angle
-    let theta_sp = (o_c_y - y_c).atan2(o_c_x - x_c);
-
-    let mut denom = (o_c_x - x_c).hypot(o_c_y - y_c);
-
-    // Avoid NaN because of invalid value
-    if denom.is_nan() || denom == 0f32 {
-      denom = 1e-6;
-    }
-
-    let alpha_sp = constrain(r / denom, -1f32, 1f32).asin();
-
-    let theta1_sp = PI + theta_sp + alpha_sp;
-
-    // Transform the angle
-    let new_x = -(s11 * theta1_sp.cos() + s12 * theta1_sp.sin());
-
-    let new_y = -(s21 * theta1_sp.cos() + s22 * theta1_sp.sin());
-
-    // Avoid NaN in atan2()
-    if new_x.is_nan() || new_y.is_nan() {
-      return 0f32;
-    }
-
-    angle = new_y.atan2(new_x);
-  }
-
-  angle
 }
