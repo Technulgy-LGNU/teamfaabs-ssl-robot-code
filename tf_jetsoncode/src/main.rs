@@ -1,12 +1,11 @@
 use crate::communication::send_cp::send_cp;
 use crate::communication::{communication_receiver, send_flags};
-use crate::proto::{CpState, RobotCp};
+use crate::proto::RobotCp;
 use crate::robot_logic::command;
 use crate::robot_logic::goalie::goalie;
-use crate::robot_logic::helpers::{
-  Vec2f, allow_own_penalty_area, ball_avoidance_margin_mm, inside_field,
-};
+use crate::robot_logic::helpers::{allow_own_penalty_area, ball_avoidance_margin_mm, inside_field};
 use crate::robot_logic::orca::{OrcaHandle, OrcaParams, WorldSnapshot};
+use crate::robot_logic::vec::Vec2f;
 use std::time::Duration;
 use tracing::info;
 
@@ -78,7 +77,7 @@ async fn main() {
   // late packets, so we use tokio::time::tick to
   // have predictably program time
 
-  let mut tick = tokio::time::interval(Duration::from_millis(4)); // ~240 Hz
+  let mut tick = tokio::time::interval(Duration::from_millis(2)); // ~480 Hz
   tick.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
 
   loop {
@@ -159,6 +158,7 @@ async fn main() {
         // Robot is allowed to move with a max speed of
         // 1,5m/s (1500mm/s) & stay away from ball 500mm
         robot_msg = command(
+          &config,
           &cp_data,
           &vision_data,
           &orca,
@@ -174,6 +174,7 @@ async fn main() {
       3 => {
         // Free to listen to commands
         robot_msg = command(
+          &config,
           &cp_data,
           &vision_data,
           &orca,

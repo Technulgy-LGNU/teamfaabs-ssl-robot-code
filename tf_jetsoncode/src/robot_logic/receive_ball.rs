@@ -1,6 +1,7 @@
 use crate::communication::{TeensySendMsg, VisionMsg};
 use crate::proto::{CpRobot, CpTrackedRobot};
-use crate::robot_logic::helpers::{distance_vec2f, raw_move_towards, raw_movement_accel, Vec2f};
+use crate::robot_logic::helpers::{raw_move_towards, raw_movement_accel};
+use crate::robot_logic::vec::{distance_vec2f, Vec2f};
 
 #[inline]
 pub(crate) fn receive_ball(

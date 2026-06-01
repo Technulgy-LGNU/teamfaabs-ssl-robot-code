@@ -1,6 +1,6 @@
 use crate::communication::{TeensySendMsg, VisionMsg, send_flags};
 use crate::proto::{CpRobot, CpTrackedRobot};
-use crate::robot_logic::helpers::{Vec2f, Vec2i, distance_cpv};
+use crate::robot_logic::vec::{Vec2f, Vec2i, distance_cpv};
 use crate::robot_logic::orca::{
   NavIntent, OrcaHandle, OrcaRequest, WorldSnapshot, nav_command_to_teensy,
 };

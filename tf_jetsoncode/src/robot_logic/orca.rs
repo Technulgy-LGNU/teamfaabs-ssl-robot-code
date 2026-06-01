@@ -25,7 +25,7 @@ use tokio::sync::watch;
 use crate::communication::TeensySendMsg;
 use crate::config;
 use crate::proto::{CpRobot, CpTrackedRobot};
-pub use crate::robot_logic::helpers::Vec2i;
+pub use crate::robot_logic::vec::Vec2i;
 
 #[derive(Debug, Clone, Copy, Default)]
 pub struct MovingObstacle {

@@ -1,12 +1,14 @@
 use crate::communication::{TeensySendMsg, VisionMsg};
 use crate::config::Config;
 use crate::proto::{CpRobot, CpTrackedRobot};
-use crate::robot_logic::helpers::{
-  Vec2f, clamp_to_own_penalty, inside_own_penalty_area, lerp, own_goal_side, own_goal_x,
-  raw_move_towards,
-};
-use crate::robot_logic::orca::{nav_command_to_teensy, NavIntent, OrcaHandle, OrcaRequest, Vec2i, WorldSnapshot};
 use crate::robot_logic::RAW_MAX_SPEED_MM_S;
+use crate::robot_logic::helpers::{
+  clamp_to_own_penalty, inside_own_penalty_area, own_goal_side, own_goal_x, raw_move_towards,
+};
+use crate::robot_logic::orca::{
+  NavIntent, OrcaHandle, OrcaRequest, WorldSnapshot, nav_command_to_teensy,
+};
+use crate::robot_logic::vec::{lerp, Vec2f, Vec2i};
 
 // How far the goalie should stay in front of the goal line when guarding.
 const GOAL_LINE_MARGIN_MM: f32 = 120f32;
