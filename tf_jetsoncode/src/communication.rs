@@ -36,6 +36,7 @@ pub struct TeensyRecMSG {
   // Bit 8-31: Buttons followed by dip-switches
   pub flags: u32,
   pub batt_level: u8,
+  pub current: u16,
   pub orientation: u8,
 }
 impl TeensyRecMSG {

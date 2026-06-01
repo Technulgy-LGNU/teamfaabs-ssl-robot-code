@@ -41,7 +41,7 @@ impl Default for CrashPilotConfig {
     Self {
       host: Ipv4Addr::new(10, 0, 64, 221),
       port: 1024,
-      port_outgoing: 4096,
+      port_outgoing: 2048,
     }
   }
 }

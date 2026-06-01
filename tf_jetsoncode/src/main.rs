@@ -17,7 +17,7 @@ mod robot_logic;
 
 // Constants
 const TEENSY_SEND_MSG_SIZE: usize = 17;
-const TEENSY_RECEIVE_MSG_SIZE: usize = 6;
+const TEENSY_RECEIVE_MSG_SIZE: usize = 8;
 const DEFAULT_ACCEL_MM_S2: u32 = 4_000;
 const DEFAULT_DECEL_MM_S2: u32 = 6_000;
 
@@ -222,11 +222,12 @@ async fn main() {
     // At the end of the loop, send cp update data
     let cp_update_data: RobotCp = RobotCp {
       robot_id: config.robot_id as u32,
-      battery_voltage: Some(teensy_data.batt_level as f32),
+      battery_voltage: Some(teensy_data.batt_level as u32),
+      current: Some(teensy_data.current as u32),
       kicker_ready: teensy_data.kick_ready() && teensy_data.chip_ready(),
       has_ball: teensy_data.has_ball(),
-      error_msg: if teensy_data.error() {
-        Some("Teensy reported an error".to_string())
+      has_error: if teensy_data.error() {
+        Some(true)
       } else {
         None
       },

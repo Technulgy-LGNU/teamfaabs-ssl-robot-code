@@ -69,7 +69,8 @@ pub async fn teensy_communication(cfg: &config::Config, tx: EventShare, rx: Teen
               let msg = TeensyRecMSG {
                 flags: u32::from_le_bytes([buf[0], buf[1], buf[2], buf[3]]),
                 batt_level: buf[4],
-                orientation: buf[5],
+                current: u16::from_le_bytes([buf[5], buf[6]]),
+                orientation: buf[7],
               };
 
               let mut lock = tx.lock().await;
