@@ -9,6 +9,7 @@ use crate::robot_logic::orca::{
 use crate::robot_logic::receive_ball::receive_ball;
 use crate::robot_logic::vec::{Vec2f, distance_cpv};
 use tracing::info;
+use crate::robot_logic::defense::{defense_goal, defense_robot};
 
 mod get_ball;
 pub mod goalie;
@@ -16,6 +17,7 @@ pub mod helpers;
 pub mod orca;
 mod receive_ball;
 pub mod vec;
+mod defense;
 
 // If we are inside this distance in the penalty area, stop using raw motion.
 pub(crate) const RAW_STOP_RADIUS_MM: f32 = 40f32;
@@ -119,43 +121,15 @@ pub fn command(
     }
     8 => {
       // Block a robot from receiving the ball
-      // Get the robot based on its id and cannot
-      let to_block_robot = match cfg.robot_team.as_str() {
-        "yellow" => Vec2f::new_from_cp(
-          cp_data
-            .robots_blue
-            .iter()
-            .find(|r| r.robot_id == cp_data.cmd.enemy_id.unwrap_or_default())
-            .unwrap_or(&CpTrackedRobot::default())
-            .pos,
-        ),
-        "blue" => Vec2f::new_from_cp(
-          cp_data
-            .robots_yellow
-            .iter()
-            .find(|r| r.robot_id == cp_data.cmd.enemy_id.unwrap_or_default())
-            .unwrap_or(&CpTrackedRobot::default())
-            .pos,
-        ),
-        _ => {
-          panic!("Unknown robot_team: {}", cfg.robot_team);
+      // If enemy_id == None, defend own penalty area, else block robot
+      match cp_data.cmd.enemy_id {
+        Some(_) => {
+          msg = defense_robot(cfg, cp_data, orca, world, msg);
+        },
+        None => {
+          msg = defense_goal(cfg, cp_data, orca, world, msg);
         }
-      };
-
-      let target = point_at_distance_from_a(to_block_robot, ball_pos, 500f32)
-        .unwrap_or(Vec2f::new(0f32, 0f32));
-
-      // If target is to far away, use orca
-      let intent = NavIntent::GoToPosition {
-        target_pos_mm: Vec2i::new(target.x as i32, target.y as i32),
-        max_speed_mm_s: 3000,
-      };
-      orca.publish(OrcaRequest {
-        intent,
-        world: world.clone(),
-      });
-
-      msg = nav_command_to_teensy(msg, orca.latest());
+      }
 
       // Keep looking at the ball while moving.
       msg.orient = (ball_pos - robot_pos).angle_to_u16();
