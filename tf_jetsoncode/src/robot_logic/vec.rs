@@ -1,4 +1,4 @@
-use std::ops::{Add, Div, Mul, Sub};
+use std::ops::{Add, Div, Mul, Neg, Sub};
 use crate::proto::CpVector2;
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
@@ -77,6 +77,13 @@ impl Mul<i32> for Vec2i {
   }
 }
 
+
+impl From<Vec2f> for Vec2i {
+  fn from(value: Vec2f) -> Self {
+    Vec2i::new(value.x.round() as i32, value.y.round() as i32)
+  }
+}
+
 #[derive(Debug, Clone, Copy, Default, PartialEq)]
 pub(crate) struct Vec2f {
   pub(crate) x: f32,
@@ -87,6 +94,11 @@ impl Vec2f {
   #[inline]
   pub(crate) fn new(x: f32, y: f32) -> Vec2f {
     Vec2f { x, y }
+  }
+  
+  #[inline]
+  pub(crate) fn new_from_vec2i(v: Vec2i) -> Self {
+    Self::new(v.x as f32, v.y as f32)
   }
 
   #[inline]
@@ -123,6 +135,11 @@ impl Vec2f {
   #[inline]
   pub(crate) fn dot(self, other: Vec2f) -> f32 {
     self.x * other.x + self.y * other.y
+  }
+  
+  #[inline]
+  pub(crate) fn det(self, other: Vec2f) -> f32 {
+    self.x * other.y - self.y * other.x
   }
 
   #[inline]
@@ -215,6 +232,13 @@ impl Div<f32> for Vec2f {
   #[inline]
   fn div(self, rhs: f32) -> Self::Output {
     Vec2f::new(self.x / rhs, self.y / rhs)
+  }
+}
+
+impl Neg for Vec2f {
+  type Output = Vec2f;
+  fn neg(self) -> Self::Output {
+    Vec2f::new(-self.x, -self.y)
   }
 }
 
