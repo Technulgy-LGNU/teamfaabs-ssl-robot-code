@@ -99,6 +99,9 @@ async fn main() {
       teensy_data = packet;
     }
 
+    // Checks if the config robot_id is the same as the one send by the crashpilot
+    assert!(config.robot_id == cp_data.robot_id as u8);
+
     // Self
     if config.robot_team.as_str() == "yellow" {
       robot_self = *cp_data
@@ -212,7 +215,7 @@ async fn main() {
     robot_msg.vel_x = robot_self.vel.unwrap_or_default().x as i16;
     robot_msg.vel_y = robot_self.vel.unwrap_or_default().y as i16;
 
-    // Do last check, if robot is out of field, if yes, stop
+    // Do last check, if robot is out of field, if yes, stop && checks if the robot is visibly in the vision
     if inside_field(&config, Vec2f::new_from_cp(robot_self.pos)) || robot_self.visibility <= 20 {
       robot_msg.speed = 0;
     }

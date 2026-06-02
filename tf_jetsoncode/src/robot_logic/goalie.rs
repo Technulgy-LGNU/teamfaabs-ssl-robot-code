@@ -16,8 +16,6 @@ const GOAL_LINE_MARGIN_MM: f32 = 120f32;
 const PENALTY_EDGE_MARGIN_MM: f32 = 0f32;
 // Distance in front of the goal line used as the interception lane.
 const INTERCEPT_LINE_MM: f32 = 220f32;
-// Maximum ORCA speed while approaching the penalty area.
-const ORCA_MAX_SPEED_MM_S: f32 = 1_200f32;
 // Prediction horizon used to detect a kick/shot that is likely to reach goal.
 const SHOT_LOOKAHEAD_S: f32 = 4f32;
 // Allowed vertical miss tolerance when deciding that a ball is heading at goal.
