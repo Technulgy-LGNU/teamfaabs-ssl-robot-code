@@ -1,4 +1,4 @@
-use std::ops::{Add, Div, Mul, Sub};
+use std::ops::{Add, Div, Mul, Neg, Sub};
 use crate::proto::CpVector2;
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
@@ -28,10 +28,10 @@ impl Vec2i {
     self.x * self.x + self.y * self.y
   }
 
-  #[inline]
-  pub(crate) fn calculate_vector_2i(a: CpVector2, b: CpVector2) -> Vec2i {
-    Self::new(a.x - b.x, a.y - b.y)
-  }
+  // #[inline]
+  // pub(crate) fn calculate_vector_2i(a: CpVector2, b: CpVector2) -> Vec2i {
+  //   Self::new(a.x - b.x, a.y - b.y)
+  // }
 
   #[inline]
   pub(crate) fn with_speed_clamped(self, max_speed_mm_s: u32) -> Self {
@@ -77,6 +77,13 @@ impl Mul<i32> for Vec2i {
   }
 }
 
+
+impl From<Vec2f> for Vec2i {
+  fn from(value: Vec2f) -> Self {
+    Vec2i::new(value.x.round() as i32, value.y.round() as i32)
+  }
+}
+
 #[derive(Debug, Clone, Copy, Default, PartialEq)]
 pub(crate) struct Vec2f {
   pub(crate) x: f32,
@@ -87,6 +94,11 @@ impl Vec2f {
   #[inline]
   pub(crate) fn new(x: f32, y: f32) -> Vec2f {
     Vec2f { x, y }
+  }
+
+  #[inline]
+  pub(crate) fn new_from_vec2i(v: Vec2i) -> Self {
+    Self::new(v.x as f32, v.y as f32)
   }
 
   #[inline]
@@ -126,6 +138,11 @@ impl Vec2f {
   }
 
   #[inline]
+  pub(crate) fn det(self, other: Vec2f) -> f32 {
+    self.x * other.y - self.y * other.x
+  }
+
+  #[inline]
   pub(crate) fn calculate_vector_2f(a: Vec2f, b: Vec2f) -> Self {
     Self::new(a.x - b.x, a.y - b.y)
   }
@@ -144,13 +161,13 @@ impl Vec2f {
     angle
   }
 
-  #[inline]
-  pub(crate) fn vec2f_to_cp(self) -> CpVector2 {
-    CpVector2 {
-      x: self.x as i32,
-      y: self.y as i32,
-    }
-  }
+  // #[inline]
+  // pub(crate) fn vec2f_to_cp(self) -> CpVector2 {
+  //   CpVector2 {
+  //     x: self.x as i32,
+  //     y: self.y as i32,
+  //   }
+  // }
 
   #[inline]
   pub(crate) fn angle_to_u16(self) -> u16 {
@@ -187,6 +204,7 @@ impl Sub for Vec2f {
 impl Mul for Vec2f {
   type Output = Vec2f;
 
+  #[inline]
   fn mul(self, rhs: Self) -> Self::Output {
     Vec2f::new(self.x * rhs.x, self.y * rhs.y)
   }
@@ -215,6 +233,13 @@ impl Div<f32> for Vec2f {
   #[inline]
   fn div(self, rhs: f32) -> Self::Output {
     Vec2f::new(self.x / rhs, self.y / rhs)
+  }
+}
+
+impl Neg for Vec2f {
+  type Output = Vec2f;
+  fn neg(self) -> Self::Output {
+    Vec2f::new(-self.x, -self.y)
   }
 }
 
