@@ -16,7 +16,7 @@ mod robot_logic;
 
 // Constants
 const TEENSY_SEND_MSG_SIZE: usize = 17;
-const TEENSY_RECEIVE_MSG_SIZE: usize = 8;
+const TEENSY_RECEIVE_MSG_SIZE: usize = 7;
 const DEFAULT_ACCEL_MM_S2: u32 = 4_000;
 const DEFAULT_DECEL_MM_S2: u32 = 6_000;
 

@@ -37,7 +37,6 @@ pub struct TeensyRecMSG {
   pub flags: u32,
   pub batt_level: u8,
   pub current: u16,
-  pub orientation: u8,
 }
 impl TeensyRecMSG {
   pub fn error(&self) -> bool {
