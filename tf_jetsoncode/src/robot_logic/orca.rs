@@ -408,13 +408,20 @@ impl OrcaHandle {
         let compute = move || {
           let (preferred, max_speed) = preferred_velocity(&req.world, req.intent);
           let raw_vel = orca_step(&params, &req.world, preferred, max_speed);
-          let vel = limit_velocity_change(
+          let limited = limit_velocity_change(
             last_command_vel,
             raw_vel,
             dt_s,
             params.max_accel_mm_s2 as f32,
             params.max_decel_mm_s2 as f32,
           );
+          // Safety filter on the final command: the rate limiter can lag the planned braking, so
+          // re-clamp the inward component to the braking limit (no go-around injection here). This
+          // is the hard guarantee that the commanded velocity never drives into a keep-out zone.
+          let self_pos = Vec2f::new_from_vec2i(req.world.self_pos_mm);
+          let vel: Vec2i =
+            apply_static_avoidance(&params, &req.world, self_pos, Vec2f::new_from_vec2i(limited), false)
+              .into();
           let debug = OrcaDebug {
             preferred_vel_mm_s: preferred,
             num_neighbors: req.world.others.len() + usize::from(req.world.ball.is_some()),
@@ -502,13 +509,8 @@ fn orca_step(
 
   let self_pos = Vec2f::new_from_vec2i(world.self_pos_mm);
   let self_vel = Vec2f::new_from_vec2i(world.self_vel_mm_s);
-  let pref_vel = apply_static_avoidance(
-    params,
-    world,
-    self_pos,
-    Vec2f::new_from_vec2i(preferred_vel),
-    time_horizon,
-  );
+  let pref_vel =
+    apply_static_avoidance(params, world, self_pos, Vec2f::new_from_vec2i(preferred_vel), true);
 
   let lines = create_orca_lines(params, self_pos, self_vel, world, time_horizon, time_step);
   let mut new_vel = Vec2f::default();
@@ -517,7 +519,7 @@ fn orca_step(
     linear_program_3(&lines, 0, fail, max_speed, &mut new_vel);
   }
 
-  let adjusted = apply_static_avoidance(params, world, self_pos, new_vel, time_horizon);
+  let adjusted = apply_static_avoidance(params, world, self_pos, new_vel, true);
 
   Vec2i {
     x: adjusted.x.round() as i32,
@@ -526,28 +528,65 @@ fn orca_step(
   .with_speed_clamped(max_speed_mm_s)
 }
 
-fn apply_static_avoidance(
-  params: &OrcaParams, world: &WorldSnapshot, self_pos: Vec2f, mut vel: Vec2f, horizon_s: f32,
-) -> Vec2f {
-  let body_clearance = params.default_robot_radius_mm as f32 + params.safety_margin_mm as f32;
-  vel = world
-    .field
-    .safe_play_rect(body_clearance)
-    .clamp_velocity_keep_inside(self_pos, vel, horizon_s);
+/// Extra gap kept between the robot body and the penalty-area line, on top of the robot radius.
+///
+/// The keep-out rectangle is inflated by `robot_radius + this`, so the robot body ends up only a
+/// few centimeters from the actual line instead of the much larger robot-vs-robot safety margin.
+const PENALTY_KEEPOUT_MARGIN_MM: f32 = 20.0;
 
-  let keepout_clearance = body_clearance;
-  if !world.allow_own_penalty_area {
-    vel = world
-      .field
-      .own_penalty_rect(keepout_clearance)
-      .clamp_velocity_keep_outside(self_pos, vel, horizon_s);
-  }
+/// Fraction of the robot's max deceleration used to plan static-zone braking. Staying below the
+/// rate limiter's actual capability leaves it headroom to correct discrete-step overshoot, so the
+/// robot reliably stops *before* the boundary instead of nicking it.
+const STATIC_BRAKE_FACTOR: f32 = 0.5;
+
+/// Apply the static keep-in/keep-out zones to a velocity.
+///
+/// `allow_go_around` controls the dead-on behavior:
+/// - `true` (planning stage, before the rate limiter): when the robot is aimed straight at a box
+///   with no sideways motion, the stripped inward speed is redirected sideways so it actively
+///   drives around.
+/// - `false` (safety stage, after the rate limiter): the inward component is only *clamped* to the
+///   braking limit, never grown. This is the hard guarantee that the *commanded* velocity can never
+///   plow into a box — the rate limiter can lag the planned braking, but this filter cannot.
+fn apply_static_avoidance(
+  params: &OrcaParams, world: &WorldSnapshot, self_pos: Vec2f, mut vel: Vec2f, allow_go_around: bool,
+) -> Vec2f {
+  // Static zones are braked against the robot's own deceleration capability rather than a fixed
+  // time horizon: full speed until braking distance, then a smooth stop right at the boundary.
+  let decel = params.max_decel_mm_s2 as f32 * STATIC_BRAKE_FACTOR;
+
+  let field_clearance = params.default_robot_radius_mm as f32 + params.safety_margin_mm as f32;
   vel = world
     .field
-    .opponent_penalty_rect(keepout_clearance)
-    .clamp_velocity_keep_outside(self_pos, vel, horizon_s);
+    .safe_play_rect(field_clearance)
+    .clamp_velocity_keep_inside(self_pos, vel, decel);
+
+  let keepout_clearance = params.default_robot_radius_mm as f32 + PENALTY_KEEPOUT_MARGIN_MM;
+  if !world.allow_own_penalty_area {
+    vel = world.field.own_penalty_rect(keepout_clearance).clamp_velocity_keep_outside(
+      self_pos,
+      vel,
+      decel,
+      allow_go_around,
+    );
+  }
+  vel = world.field.opponent_penalty_rect(keepout_clearance).clamp_velocity_keep_outside(
+    self_pos,
+    vel,
+    decel,
+    allow_go_around,
+  );
 
   vel
+}
+
+/// Maximum speed from which the robot can still brake to a stop within `distance_mm`.
+fn braking_speed(distance_mm: f32, decel_mm_s2: f32) -> f32 {
+  if distance_mm <= 0.0 {
+    0.0
+  } else {
+    (2.0 * decel_mm_s2 * distance_mm).sqrt()
+  }
 }
 
 fn limit_velocity_change(
@@ -581,42 +620,96 @@ fn limit_velocity_change(
 }
 
 impl Rect {
-  fn clamp_velocity_keep_inside(self, pos: Vec2f, vel: Vec2f, horizon_s: f32) -> Vec2f {
+  /// Keep the robot inside this rectangle. Each axis runs at full speed until it is within braking
+  /// distance of the wall, then decelerates to a stop exactly at the wall — so the robot stays fast
+  /// near field edges instead of crawling.
+  fn clamp_velocity_keep_inside(self, pos: Vec2f, vel: Vec2f, decel: f32) -> Vec2f {
     let mut out = vel;
-    let projected = pos + vel * horizon_s;
-    if projected.x < self.min_x_mm {
-      out.x = (self.min_x_mm - pos.x) / horizon_s;
-    } else if projected.x > self.max_x_mm {
-      out.x = (self.max_x_mm - pos.x) / horizon_s;
+    if out.x > 0.0 {
+      out.x = out.x.min(braking_speed(self.max_x_mm - pos.x, decel));
+    } else if out.x < 0.0 {
+      out.x = out.x.max(-braking_speed(pos.x - self.min_x_mm, decel));
     }
-    if projected.y < self.min_y_mm {
-      out.y = (self.min_y_mm - pos.y) / horizon_s;
-    } else if projected.y > self.max_y_mm {
-      out.y = (self.max_y_mm - pos.y) / horizon_s;
+    if out.y > 0.0 {
+      out.y = out.y.min(braking_speed(self.max_y_mm - pos.y, decel));
+    } else if out.y < 0.0 {
+      out.y = out.y.max(-braking_speed(pos.y - self.min_y_mm, decel));
     }
     out
   }
 
-  fn clamp_velocity_keep_outside(self, pos: Vec2f, vel: Vec2f, horizon_s: f32) -> Vec2f {
-    let projected = pos + vel * horizon_s;
-    if !self.contains(projected) {
+  /// Keep the robot out of this rectangle while letting it slide *around* the boundary.
+  ///
+  /// Instead of only checking the projected endpoint (which lets a path cut through a corner)
+  /// or truncating the velocity to a dead stop in front of the box (which can never drive
+  /// around it), this treats the rectangle as a convex keep-out obstacle and only removes the
+  /// velocity component pointing *into* it:
+  ///
+  /// - The component tangent to the nearest face/corner is preserved, so the robot slides along
+  ///   the boundary and rounds the corners.
+  /// - The inward (normal) component is limited so the robot can approach but never cross the
+  ///   boundary within the time horizon. Because the nearest feature's supporting line fully
+  ///   separates the robot from the (convex) box, this guarantees the straight-line path never
+  ///   enters the rectangle.
+  /// - When `allow_go_around` is set, the forward motion that gets blocked by the box is redirected
+  ///   *along* the boundary (preserving speed) so the robot rounds the box at full pace instead of
+  ///   crawling. The slide direction follows the robot's existing tangential intent; only when it is
+  ///   aimed dead-on with no sideways intent at all does it fall back to biasing toward the field
+  ///   center (so it rounds the open side, not the goal line).
+  fn clamp_velocity_keep_outside(
+    self, pos: Vec2f, vel: Vec2f, decel: f32, allow_go_around: bool,
+  ) -> Vec2f {
+    // Small buffer (inside the already-inflated rect) to absorb one tick of discrete overshoot.
+    const MARGIN_MM: f32 = 20.0;
+
+    if self.contains(pos) {
+      // Abnormal: we're already inside the keep-out zone. Drive straight out the nearest face,
+      // preserving (at least) the requested speed.
+      let outward = (self.closest_boundary_point(pos) - pos).normalized();
+      let speed = vel.norm().max(1.0);
+      return outward * speed;
+    }
+
+    let closest = self.closest_boundary_point(pos);
+    let to_robot = pos - closest;
+    let dist = to_robot.norm();
+    if dist <= 1e-6 {
+      return vel;
+    }
+    let normal = to_robot / dist; // outward unit normal at the nearest feature
+
+    // Inward speed (toward the box) the robot is currently carrying.
+    let inward = -vel.dot(normal);
+    // Inward speed it may keep and still brake to a stop before the boundary.
+    let max_inward = braking_speed(dist - MARGIN_MM, decel);
+    if inward <= max_inward {
+      // Moving away, parallel, or approaching slowly enough to stop in time: nothing to do.
       return vel;
     }
 
-    let dist_left = projected.x - self.min_x_mm;
-    let dist_right = self.max_x_mm - projected.x;
-    let dist_bottom = projected.y - self.min_y_mm;
-    let dist_top = self.max_y_mm - projected.y;
+    // Strip the excess inward component; keep the tangential (slide-around) part.
+    let tangent = Vec2f::new(-normal.y, normal.x);
+    let tangential = vel - normal * vel.dot(normal);
+    let mut out = tangential - normal * max_inward;
 
-    let mut out = vel;
-    if dist_left <= dist_right && dist_left <= dist_top && dist_left <= dist_bottom {
-      out.x = (self.min_x_mm - pos.x) / horizon_s;
-    } else if dist_right <= dist_top && dist_right <= dist_bottom {
-      out.x = (self.max_x_mm - pos.x) / horizon_s;
-    } else if dist_bottom <= dist_top {
-      out.y = (self.min_y_mm - pos.y) / horizon_s;
-    } else {
-      out.y = (self.max_y_mm - pos.y) / horizon_s;
+    // Redirect the blocked forward motion along the boundary so the robot rounds the box at speed
+    // instead of stalling. The available tangential budget keeps total speed constant.
+    if allow_go_around {
+      let tang_budget = (vel.norm_squared() - max_inward * max_inward).max(0.0).sqrt();
+      if tang_budget > tangential.norm() {
+        let tang_signed = vel.dot(tangent);
+        // Only trust the robot's own sideways intent when it is a meaningful fraction of its speed.
+        // A near-perpendicular (dead-on) approach has a tiny, unreliable tangential sign that must
+        // not pick the side — it could send the robot the long way, into the goal line. There, bias
+        // toward the field center so it rounds the open side instead.
+        let side = if tang_signed.abs() > 0.2 * vel.norm() {
+          tang_signed.signum()
+        } else {
+          let to_center = Vec2f::default() - pos;
+          if tangent.dot(to_center) >= 0.0 { 1.0 } else { -1.0 }
+        };
+        out = tangent * (tang_budget * side) - normal * max_inward;
+      }
     }
 
     out
@@ -625,6 +718,33 @@ impl Rect {
   fn contains(self, p: Vec2f) -> bool {
     p.x >= self.min_x_mm && p.x <= self.max_x_mm && p.y >= self.min_y_mm && p.y <= self.max_y_mm
   }
+
+  /// Closest point on the rectangle boundary. For an outside point this is the nearest face or
+  /// corner; for an inside point it is the nearest face (used to escape).
+  fn closest_boundary_point(self, p: Vec2f) -> Vec2f {
+    if self.contains(p) {
+      let dist_left = p.x - self.min_x_mm;
+      let dist_right = self.max_x_mm - p.x;
+      let dist_bottom = p.y - self.min_y_mm;
+      let dist_top = self.max_y_mm - p.y;
+      let min = dist_left.min(dist_right).min(dist_bottom).min(dist_top);
+      if min == dist_left {
+        Vec2f::new(self.min_x_mm, p.y)
+      } else if min == dist_right {
+        Vec2f::new(self.max_x_mm, p.y)
+      } else if min == dist_bottom {
+        Vec2f::new(p.x, self.min_y_mm)
+      } else {
+        Vec2f::new(p.x, self.max_y_mm)
+      }
+    } else {
+      Vec2f::new(
+        p.x.clamp(self.min_x_mm, self.max_x_mm),
+        p.y.clamp(self.min_y_mm, self.max_y_mm),
+      )
+    }
+  }
+
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -1000,30 +1120,108 @@ mod tests {
     assert!(out.y <= 0, "out={:?}", out);
   }
 
-  #[test]
-  fn opponent_penalty_is_kept_out() {
+  /// Run the full reactive control loop (preferred velocity -> orca_step -> accel/decel limiter ->
+  /// integrate) so tests exercise the braking model the way the robot actually does, instead of a
+  /// single-step linear projection.
+  fn run_closed_loop(
+    mut world: WorldSnapshot, target: Vec2i, max_speed: u32, steps: usize,
+  ) -> Vec<Vec2f> {
     let params = OrcaParams {
       run_blocking: false,
       ..Default::default()
     };
-    let world = WorldSnapshot {
+    let dt = params.time_step_ms as f32 / 1000.0;
+    let mut pos = Vec2f::new_from_vec2i(world.self_pos_mm);
+    let mut vel = Vec2f::default();
+    let mut path = Vec::with_capacity(steps + 1);
+    path.push(pos);
+    for _ in 0..steps {
+      world.self_pos_mm = pos.into();
+      world.self_vel_mm_s = vel.into();
+      let pref = ((target - world.self_pos_mm) * 2).with_speed_clamped(max_speed);
+      let raw = orca_step(&params, &world, pref, max_speed);
+      let limited = limit_velocity_change(
+        vel.into(),
+        raw,
+        dt,
+        params.max_accel_mm_s2 as f32,
+        params.max_decel_mm_s2 as f32,
+      );
+      // Mirror the worker's post-limiter safety filter.
+      let safe = apply_static_avoidance(&params, &world, pos, Vec2f::new_from_vec2i(limited), false);
+      vel = safe;
+      pos = pos + vel * dt;
+      path.push(pos);
+    }
+    path
+  }
+
+  fn base_world(pos: Vec2i) -> WorldSnapshot {
+    WorldSnapshot {
       now: Instant::now(),
       self_id: 1,
-      self_pos_mm: Vec2i::new(-3_200, 0),
+      self_pos_mm: pos,
       self_vel_mm_s: Vec2i::default(),
       self_orientation: None,
       others: Vec::new(),
       ball: None,
       field: test_field(),
       allow_own_penalty_area: false,
+    }
+  }
+
+  #[test]
+  fn approaches_penalty_box_at_full_speed() {
+    let params = OrcaParams {
+      run_blocking: false,
+      ..Default::default()
     };
-    let out = orca_step(&params, &world, Vec2i::new(-2_000, 0), 2_000);
-    let projected = Vec2f::new_from_vec2i(world.self_pos_mm) + Vec2f::new_from_vec2i(out) * 2.0;
+    // Well away from the box, aimed at it: must not be throttled by the keep-out zone.
+    let world = base_world(Vec2i::new(-1_000, 0));
+    let out = orca_step(&params, &world, Vec2i::new(-3_000, 0), 3_000);
+    assert!(out.x < -2_800, "should drive fast toward the box, out={out:?}");
+  }
+
+  #[test]
+  fn operates_close_to_penalty_box() {
+    let params = OrcaParams {
+      run_blocking: false,
+      ..Default::default()
+    };
+    // The robot can sit only a few cm off the line: just outside the inflated keep-out face, with
+    // its body (radius 90) about PENALTY_KEEPOUT_MARGIN_MM from the actual penalty line.
+    let line = test_field().opponent_penalty_rect(0.0);
+    // Field-side face of the actual penalty area on the opponent (x-) side is at x = -3500; field
+    // side is +x of it. The keep-out only pushes the center out by radius + margin.
+    let near_x = -3500 + params.default_robot_radius_mm as i32 + PENALTY_KEEPOUT_MARGIN_MM as i32 + 10;
+    let world = base_world(Vec2i::new(near_x, 0));
+
+    // Driving tangentially (along the box) right next to it must not be throttled.
+    let along = orca_step(&params, &world, Vec2i::new(0, 3_000), 3_000);
+    assert!(along.y > 2_800, "should move full speed alongside the box, out={along:?}");
     assert!(
-      !world.field.opponent_penalty_rect(120.0).contains(projected),
-      "out={:?}",
-      out
+      !line.contains(Vec2f::new(near_x as f32, 0.0)),
+      "test position should be outside the actual penalty area"
     );
+
+    // It is this close because the keep-out only inflates by radius + a small margin.
+    let body_gap = (near_x as f32 + 3_500.0).abs() - params.default_robot_radius_mm as f32;
+    assert!(body_gap < 60.0, "robot body should sit within a few cm of the line: {body_gap} mm");
+  }
+
+  #[test]
+  fn drives_around_box_to_the_far_side() {
+    // Target sits on the opposite side of the box; the straight line passes through it, so the
+    // robot must detour around and still arrive.
+    let path =
+      run_closed_loop(base_world(Vec2i::new(-4_000, -1_300)), Vec2i::new(-4_000, 1_300), 3_000, 800);
+    let line = test_field().opponent_penalty_rect(0.0);
+    for p in &path {
+      assert!(!line.contains(*p), "robot center crossed the penalty line at {p:?}");
+    }
+    let last = *path.last().unwrap();
+    let reached = (last - Vec2f::new(-4_000.0, 1_300.0)).norm();
+    assert!(reached < 250.0, "robot did not get around to the far side, last={last:?}");
   }
 
   #[test]
@@ -1089,3 +1287,6 @@ mod tests {
     assert_eq!(out, Vec2i::new(20, 0));
   }
 }
+
+
+
