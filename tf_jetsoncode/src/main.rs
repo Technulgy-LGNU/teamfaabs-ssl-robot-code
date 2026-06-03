@@ -72,6 +72,9 @@ async fn main() {
   let mut teensy_data: communication::TeensyRecMSG = Default::default();
   let mut robot_msg: communication::TeensySendMsg = Default::default();
   let mut robot_self: proto::CpTrackedRobot = Default::default();
+  // Other vars
+  /// Check, if the robot was goalie, before a stop occurred, if yes, limit speed
+  let mut was_goalie: bool = false;
 
   // The rest of the code should not depend on
   // late packets, so we use tokio::time::tick to
@@ -100,7 +103,7 @@ async fn main() {
     }
 
     // Checks if the config robot_id is the same as the one send by the crashpilot
-    assert!(config.robot_id == cp_data.robot_id as u8);
+    assert_eq!(config.robot_id, cp_data.robot_id as u8);
 
     // Self
     if config.robot_team.as_str() == "yellow" {
@@ -160,26 +163,41 @@ async fn main() {
       2 => {
         // Robot is allowed to move with a max speed of
         // 1,5m/s (1500mm/s) & stay away from ball 500mm
-        robot_msg = command(
-          &config,
-          &cp_data,
-          &vision_data,
-          &orca,
-          &world,
-          robot_msg,
-          true,
-          robot_self,
-        );
+        if was_goalie {
+          robot_msg = command(
+            &config,
+            &cp_data,
+            &vision_data,
+            &teensy_data,
+            &orca,
+            &world,
+            robot_msg,
+            true,
+            robot_self,
+          );
+        } else {
+          robot_msg = goalie(
+            &config,
+            &cp_data,
+            &robot_self,
+            &vision_data,
+            &orca,
+            &world,
+            robot_msg,
+          );
+        }
 
         robot_msg.self_orient = orient as u16;
         robot_msg.orient = cp_data.cmd.orientation.unwrap_or_default() as u16;
       }
       3 => {
         // Free to listen to commands
+        was_goalie = false;
         robot_msg = command(
           &config,
           &cp_data,
           &vision_data,
+          &teensy_data,
           &orca,
           &world,
           robot_msg,
@@ -189,6 +207,7 @@ async fn main() {
       }
       4 => {
         // Goalie, move into penalty area and protect the goal
+        was_goalie = true;
         robot_msg = goalie(
           &config,
           &cp_data,

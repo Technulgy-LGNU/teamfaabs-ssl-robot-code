@@ -1,4 +1,4 @@
-use crate::communication::{TeensySendMsg, VisionMsg, send_flags};
+use crate::communication::{TeensySendMsg, VisionMsg, send_flags, TeensyRecMSG};
 use crate::config;
 use crate::proto::{CpRobot, CpTrackedRobot};
 use crate::robot_logic::get_ball::get_ball;
@@ -9,6 +9,7 @@ use crate::robot_logic::orca::{
 use crate::robot_logic::receive_ball::receive_ball;
 use crate::robot_logic::vec::{Vec2f, distance_cpv};
 use tracing::info;
+use tracing_subscriber::filter::combinator::Or;
 use crate::robot_logic::defense::{defense_goal, defense_robot};
 
 mod get_ball;
@@ -27,7 +28,7 @@ pub(crate) const RAW_MAX_SPEED_MM_S: f32 = 4_000f32;
 
 #[inline]
 pub fn command(
-  cfg: &config::Config, cp_data: &CpRobot, vision_data: &VisionMsg, orca: &OrcaHandle,
+  cfg: &config::Config, cp_data: &CpRobot, vision_data: &VisionMsg, teensy_data: &TeensyRecMSG, orca: &OrcaHandle,
   world: &WorldSnapshot, mut msg: TeensySendMsg, stop: bool, robot_self: CpTrackedRobot,
 ) -> TeensySendMsg {
   // Vars
@@ -51,7 +52,13 @@ pub fn command(
 
       // Check if near of pos, and then stop
       if distance_cpv(robot_self.pos, cp_data.cmd.pos.unwrap_or_default()) < 10.0 {
-        msg.speed = 0;
+        let intent = NavIntent::Stop;
+        orca.publish(OrcaRequest {
+          intent,
+          world: world.clone(),
+        });
+
+        msg = nav_command_to_teensy(msg, orca.latest());
       } else {
         let nav_intent = NavIntent::GoToPosition {
           target_pos_mm: Vec2i::new_from_cp(cp_data.cmd.pos.unwrap_or_default()),
@@ -115,9 +122,50 @@ pub fn command(
     }
     6 => {
       // Dribble the Ball
+      // Run the steal algorithm, until we have the ball in the ball capturing zone
+      if teensy_data.has_ball() {
+        let intent = NavIntent::GoToPosition {
+          target_pos_mm: Vec2i::new_from_cp(cp_data.cmd.pos.unwrap_or_default()),
+          max_speed_mm_s: cp_data.cmd.speed.unwrap_or_default(),
+        };
+        orca.publish(OrcaRequest {
+          intent,
+          world: world.clone(),
+        });
+
+        // Enable Dribbler
+        msg.set_flag(send_flags::DRIBBLER);
+        msg.dribbler_pwr = 200;
+
+        msg = nav_command_to_teensy(msg, orca.latest());
+      } else {
+        msg = get_ball(cp_data, vision_data, orca, world, msg, robot_self);
+      }
     }
     7 => {
       // Position the Ball
+      // Run the steal algorithm, until we have the ball in the ball capturing zone
+      // After that slowly turn the dribbler off and drive away from the ball
+      if teensy_data.has_ball() {
+        let intent = NavIntent::GoToPosition {
+          target_pos_mm: Vec2i::new_from_cp(cp_data.cmd.pos.unwrap_or_default()),
+          max_speed_mm_s: cp_data.cmd.speed.unwrap_or_default(),
+        };
+        orca.publish(OrcaRequest {
+          intent,
+          world: world.clone(),
+        });
+
+        // Enable Dribbler
+        msg.set_flag(send_flags::DRIBBLER);
+        msg.dribbler_pwr = 200;
+
+        msg = nav_command_to_teensy(msg, orca.latest());
+      } else if robot_pos == Vec2f::new_from_cp(cp_data.cmd.pos.unwrap_or_default()){
+        // Logic to drive away from the ball
+      } else {
+        msg = get_ball(cp_data, vision_data, orca, world, msg, robot_self);
+      }
     }
     8 => {
       // Block a robot from receiving the ball
