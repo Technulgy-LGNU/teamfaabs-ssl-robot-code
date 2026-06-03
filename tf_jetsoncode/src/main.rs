@@ -73,7 +73,7 @@ async fn main() {
   let mut robot_msg: communication::TeensySendMsg = Default::default();
   let mut robot_self: proto::CpTrackedRobot = Default::default();
   // Other vars
-  /// Check, if the robot was goalie, before a stop occurred, if yes, limit speed
+  // Check, if the robot was goalie, before a stop occurred, if yes, limit speed
   let mut was_goalie: bool = false;
 
   // The rest of the code should not depend on

@@ -52,89 +52,6 @@ impl Rect {
       max_y_mm,
     }
   }
-
-  fn clamp_velocity_keep_outside(self, pos: Vec2f, vel: Vec2f, horizon_s: f32) -> Vec2f {
-    if horizon_s <= 0.0 {
-      return vel;
-    }
-
-    if self.contains(pos) {
-      return self.escape_velocity(pos, horizon_s);
-    }
-
-    let end = pos + vel * horizon_s;
-    let Some((t_enter, _t_exit)) = self.segment_intersection(pos, end) else {
-      return vel;
-    };
-
-    // Stay just outside the rectangle so rounding cannot nudge us back onto the boundary.
-    let segment_len = vel.norm() * horizon_s;
-    let safe_segment_len = (t_enter * segment_len - 1.0).max(0.0);
-    if segment_len <= 1e-12 {
-      return Vec2f::default();
-    }
-    vel * (safe_segment_len / segment_len)
-  }
-
-  fn escape_velocity(self, pos: Vec2f, horizon_s: f32) -> Vec2f {
-    if horizon_s <= 0.0 {
-      return Vec2f::default();
-    }
-
-    let dist_left = pos.x - self.min_x_mm;
-    let dist_right = self.max_x_mm - pos.x;
-    let dist_bottom = pos.y - self.min_y_mm;
-    let dist_top = self.max_y_mm - pos.y;
-
-    if dist_left <= dist_right && dist_left <= dist_bottom && dist_left <= dist_top {
-      return Vec2f::new((self.min_x_mm - pos.x - 1.0) / horizon_s, 0.0);
-    }
-    if dist_right <= dist_bottom && dist_right <= dist_top {
-      return Vec2f::new((self.max_x_mm - pos.x + 1.0) / horizon_s, 0.0);
-    }
-    if dist_bottom <= dist_top {
-      return Vec2f::new(0.0, (self.min_y_mm - pos.y - 1.0) / horizon_s);
-    }
-    Vec2f::new(0.0, (self.max_y_mm - pos.y + 1.0) / horizon_s)
-  }
-
-  fn segment_intersection(self, start: Vec2f, end: Vec2f) -> Option<(f32, f32)> {
-    let delta = end - start;
-    let mut t_min = 0.0f32;
-    let mut t_max = 1.0f32;
-
-    let slabs = [
-      (start.x, delta.x, self.min_x_mm, self.max_x_mm),
-      (start.y, delta.y, self.min_y_mm, self.max_y_mm),
-    ];
-
-    for (origin, direction, slab_min, slab_max) in slabs {
-      if direction.abs() <= 1e-12 {
-        if origin < slab_min || origin > slab_max {
-          return None;
-        }
-        continue;
-      }
-
-      let inv = 1.0 / direction;
-      let mut t1 = (slab_min - origin) * inv;
-      let mut t2 = (slab_max - origin) * inv;
-      if t1 > t2 {
-        std::mem::swap(&mut t1, &mut t2);
-      }
-      t_min = t_min.max(t1);
-      t_max = t_max.min(t2);
-      if t_min > t_max {
-        return None;
-      }
-    }
-
-    if t_max < 0.0 || t_min > 1.0 {
-      None
-    } else {
-      Some((t_min.max(0.0), t_max.min(1.0)))
-    }
-  }
 }
 
 #[derive(Debug, Clone, Copy, Default)]
@@ -491,19 +408,12 @@ impl OrcaHandle {
         let compute = move || {
           let (preferred, max_speed) = preferred_velocity(&req.world, req.intent);
           let raw_vel = orca_step(&params, &req.world, preferred, max_speed);
-          let limited = limit_velocity_change(
+          let vel = limit_velocity_change(
             last_command_vel,
             raw_vel,
             dt_s,
             params.max_accel_mm_s2 as f32,
             params.max_decel_mm_s2 as f32,
-          );
-          let safe = apply_static_avoidance(
-            &params,
-            &req.world,
-            Vec2f::new_from_vec2i(req.world.self_pos_mm),
-            Vec2f::new_from_vec2i(limited),
-            (params.time_horizon_ms as f32 / 1000.0).max(0.01),
           );
           let debug = OrcaDebug {
             preferred_vel_mm_s: preferred,
@@ -511,7 +421,7 @@ impl OrcaHandle {
             compute_time: start.elapsed(),
           };
           NavCommand {
-            vel_mm_s: Vec2i::from(safe).with_speed_clamped(max_speed),
+            vel_mm_s: vel,
             debug: Some(debug),
           }
         };
@@ -670,9 +580,6 @@ fn limit_velocity_change(
   }
 }
 
-// -------------------------------------------------------------------------------------------------
-// ORCA math (f32 internally)
-
 impl Rect {
   fn clamp_velocity_keep_inside(self, pos: Vec2f, vel: Vec2f, horizon_s: f32) -> Vec2f {
     let mut out = vel;
@@ -690,6 +597,31 @@ impl Rect {
     out
   }
 
+  fn clamp_velocity_keep_outside(self, pos: Vec2f, vel: Vec2f, horizon_s: f32) -> Vec2f {
+    let projected = pos + vel * horizon_s;
+    if !self.contains(projected) {
+      return vel;
+    }
+
+    let dist_left = projected.x - self.min_x_mm;
+    let dist_right = self.max_x_mm - projected.x;
+    let dist_bottom = projected.y - self.min_y_mm;
+    let dist_top = self.max_y_mm - projected.y;
+
+    let mut out = vel;
+    if dist_left <= dist_right && dist_left <= dist_top && dist_left <= dist_bottom {
+      out.x = (self.min_x_mm - pos.x) / horizon_s;
+    } else if dist_right <= dist_top && dist_right <= dist_bottom {
+      out.x = (self.max_x_mm - pos.x) / horizon_s;
+    } else if dist_bottom <= dist_top {
+      out.y = (self.min_y_mm - pos.y) / horizon_s;
+    } else {
+      out.y = (self.max_y_mm - pos.y) / horizon_s;
+    }
+
+    out
+  }
+
   fn contains(self, p: Vec2f) -> bool {
     p.x >= self.min_x_mm && p.x <= self.max_x_mm && p.y >= self.min_y_mm && p.y <= self.max_y_mm
   }
@@ -704,8 +636,8 @@ struct Line {
 }
 
 fn create_orca_lines(
-  params: &OrcaParams, self_pos: Vec2f, self_vel: Vec2f, world: &WorldSnapshot, time_horizon_s: f32,
-  time_step_s: f32,
+  params: &OrcaParams, self_pos: Vec2f, self_vel: Vec2f, world: &WorldSnapshot,
+  time_horizon_s: f32, time_step_s: f32,
 ) -> Vec<Line> {
   let mut lines = Vec::with_capacity(world.others.len() + usize::from(world.ball.is_some()));
   for other in &world.others {
@@ -1086,65 +1018,11 @@ mod tests {
       allow_own_penalty_area: false,
     };
     let out = orca_step(&params, &world, Vec2i::new(-2_000, 0), 2_000);
-    let start = Vec2f::new_from_vec2i(world.self_pos_mm);
-    let projected = start + Vec2f::new_from_vec2i(out) * 2.0;
+    let projected = Vec2f::new_from_vec2i(world.self_pos_mm) + Vec2f::new_from_vec2i(out) * 2.0;
     assert!(
-      world
-        .field
-        .opponent_penalty_rect(120.0)
-        .segment_intersection(start, projected)
-        .is_none(),
+      !world.field.opponent_penalty_rect(120.0).contains(projected),
       "out={:?}",
       out
-    );
-  }
-
-  #[test]
-  fn static_avoidance_survives_velocity_rate_limiting() {
-    let params = OrcaParams {
-      run_blocking: false,
-      ..Default::default()
-    };
-    let world = WorldSnapshot {
-      now: Instant::now(),
-      self_id: 1,
-      self_pos_mm: Vec2i::new(-3_200, 0),
-      self_vel_mm_s: Vec2i::default(),
-      self_orientation: None,
-      others: Vec::new(),
-      ball: None,
-      field: test_field(),
-      allow_own_penalty_area: false,
-    };
-
-    let raw = orca_step(&params, &world, Vec2i::new(2_000, 0), 2_000);
-    let limited = limit_velocity_change(
-      Vec2i::new(-2_000, 0),
-      raw,
-      0.01,
-      params.max_accel_mm_s2 as f32,
-      params.max_decel_mm_s2 as f32,
-    );
-    let safe = apply_static_avoidance(
-      &params,
-      &world,
-      Vec2f::new_from_vec2i(world.self_pos_mm),
-      Vec2f::new_from_vec2i(limited),
-      (params.time_horizon_ms as f32 / 1000.0).max(0.01),
-    );
-
-    let start = Vec2f::new_from_vec2i(world.self_pos_mm);
-    let projected = start + safe * 2.0;
-    assert!(
-      world
-        .field
-        .opponent_penalty_rect(120.0)
-        .segment_intersection(start, projected)
-        .is_none(),
-      "raw={:?} limited={:?} safe={:?}",
-      raw,
-      limited,
-      safe
     );
   }
 

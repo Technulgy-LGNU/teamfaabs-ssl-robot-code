@@ -28,10 +28,10 @@ impl Vec2i {
     self.x * self.x + self.y * self.y
   }
 
-  #[inline]
-  pub(crate) fn calculate_vector_2i(a: CpVector2, b: CpVector2) -> Vec2i {
-    Self::new(a.x - b.x, a.y - b.y)
-  }
+  // #[inline]
+  // pub(crate) fn calculate_vector_2i(a: CpVector2, b: CpVector2) -> Vec2i {
+  //   Self::new(a.x - b.x, a.y - b.y)
+  // }
 
   #[inline]
   pub(crate) fn with_speed_clamped(self, max_speed_mm_s: u32) -> Self {
@@ -161,13 +161,13 @@ impl Vec2f {
     angle
   }
 
-  #[inline]
-  pub(crate) fn vec2f_to_cp(self) -> CpVector2 {
-    CpVector2 {
-      x: self.x as i32,
-      y: self.y as i32,
-    }
-  }
+  // #[inline]
+  // pub(crate) fn vec2f_to_cp(self) -> CpVector2 {
+  //   CpVector2 {
+  //     x: self.x as i32,
+  //     y: self.y as i32,
+  //   }
+  // }
 
   #[inline]
   pub(crate) fn angle_to_u16(self) -> u16 {

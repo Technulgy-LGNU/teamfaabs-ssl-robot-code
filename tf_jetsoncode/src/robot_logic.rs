@@ -1,24 +1,22 @@
-use crate::communication::{TeensySendMsg, VisionMsg, send_flags, TeensyRecMSG};
+use crate::communication::{TeensyRecMSG, TeensySendMsg, VisionMsg, send_flags};
 use crate::config;
 use crate::proto::{CpRobot, CpTrackedRobot};
+use crate::robot_logic::defense::{defense_goal, defense_robot};
 use crate::robot_logic::get_ball::get_ball;
-use crate::robot_logic::helpers::{point_at_distance_from_a, raw_move_towards};
 use crate::robot_logic::orca::{
   NavIntent, OrcaHandle, OrcaRequest, Vec2i, WorldSnapshot, nav_command_to_teensy,
 };
 use crate::robot_logic::receive_ball::receive_ball;
 use crate::robot_logic::vec::{Vec2f, distance_cpv};
 use tracing::info;
-use tracing_subscriber::filter::combinator::Or;
-use crate::robot_logic::defense::{defense_goal, defense_robot};
 
+mod defense;
 mod get_ball;
 pub mod goalie;
 pub mod helpers;
 pub mod orca;
 mod receive_ball;
 pub mod vec;
-mod defense;
 
 // If we are inside this distance in the penalty area, stop using raw motion.
 pub(crate) const RAW_STOP_RADIUS_MM: f32 = 40f32;
@@ -28,8 +26,9 @@ pub(crate) const RAW_MAX_SPEED_MM_S: f32 = 4_000f32;
 
 #[inline]
 pub fn command(
-  cfg: &config::Config, cp_data: &CpRobot, vision_data: &VisionMsg, teensy_data: &TeensyRecMSG, orca: &OrcaHandle,
-  world: &WorldSnapshot, mut msg: TeensySendMsg, stop: bool, robot_self: CpTrackedRobot,
+  cfg: &config::Config, cp_data: &CpRobot, vision_data: &VisionMsg, teensy_data: &TeensyRecMSG,
+  orca: &OrcaHandle, world: &WorldSnapshot, mut msg: TeensySendMsg, stop: bool,
+  robot_self: CpTrackedRobot,
 ) -> TeensySendMsg {
   // Vars
   let robot_pos = Vec2f::new_from_cp(robot_self.pos);
@@ -161,7 +160,7 @@ pub fn command(
         msg.dribbler_pwr = 200;
 
         msg = nav_command_to_teensy(msg, orca.latest());
-      } else if robot_pos == Vec2f::new_from_cp(cp_data.cmd.pos.unwrap_or_default()){
+      } else if robot_pos == Vec2f::new_from_cp(cp_data.cmd.pos.unwrap_or_default()) {
         // Logic to drive away from the ball
       } else {
         msg = get_ball(cp_data, vision_data, orca, world, msg, robot_self);
@@ -173,7 +172,7 @@ pub fn command(
       match cp_data.cmd.enemy_id {
         Some(_) => {
           msg = defense_robot(cfg, cp_data, orca, world, msg);
-        },
+        }
         None => {
           msg = defense_goal(cfg, cp_data, orca, world, msg);
         }
