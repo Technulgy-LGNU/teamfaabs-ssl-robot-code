@@ -1,6 +1,6 @@
 use crate::communication::{TeensyRecMSG, TeensySendMsg, VisionMsg, send_flags};
 use crate::config;
-use crate::proto::{CpRobot, CpTrackedRobot};
+use crate::proto::{CpRobot, CpTask, CpTrackedRobot};
 use crate::robot_logic::defense::{defense_goal, defense_robot};
 use crate::robot_logic::get_ball::get_ball;
 use crate::robot_logic::orca::{
@@ -8,7 +8,6 @@ use crate::robot_logic::orca::{
 };
 use crate::robot_logic::receive_ball::receive_ball;
 use crate::robot_logic::vec::{Vec2f, distance_cpv};
-use tracing::info;
 
 mod defense;
 mod get_ball;
@@ -35,13 +34,13 @@ pub fn command(
   let ball_pos = Vec2f::new_from_cp(cp_data.ball.pos);
   let ball_vel = Vec2f::new_from_cp(cp_data.ball.vel.unwrap_or_default());
 
-  match cp_data.cmd.task {
-    0 => {
+  match CpTask::try_from(cp_data.cmd.task).unwrap_or(CpTask::TaskUnspecified) {
+    CpTask::TaskUnspecified => {
       // UNKNOWN
       println!("UNKNOWN");
       msg.set_flag(send_flags::ERROR);
     }
-    1 => {
+    CpTask::TaskPos => {
       // Speed check
       let max_speed_mm_s = if cp_data.cmd.speed > Some(1500) && stop {
         1500
@@ -74,7 +73,7 @@ pub fn command(
 
       msg.orient = cp_data.cmd.orientation.unwrap_or_default() as u16;
     }
-    2 => {
+    CpTask::TaskKick => {
       // Kick in kick dir
 
       // First rotate robot
@@ -87,7 +86,7 @@ pub fn command(
         msg.set_flag(send_flags::KICK);
       }
     }
-    3 => {
+    CpTask::TaskChip => {
       // Chip in kick dir
 
       // First rotate robot
@@ -100,7 +99,7 @@ pub fn command(
         msg.set_flag(send_flags::CHIP);
       }
     }
-    4 => {
+    CpTask::TaskRecKick => {
       // Rec Kick
       if ball_vel.norm() >= 200f32 {
         msg = receive_ball(cp_data, robot_self, vision_data, msg);
@@ -115,11 +114,11 @@ pub fn command(
       msg.set_flag(send_flags::DRIBBLER);
       msg.dribbler_pwr = 200;
     }
-    5 => {
+    CpTask::TaskSteal => {
       // Steal Ball
       msg = get_ball(cp_data, vision_data, orca, world, msg, robot_self);
     }
-    6 => {
+    CpTask::TaskDribble => {
       // Dribble the Ball
       // Run the steal algorithm, until we have the ball in the ball capturing zone
       if teensy_data.has_ball() {
@@ -141,7 +140,7 @@ pub fn command(
         msg = get_ball(cp_data, vision_data, orca, world, msg, robot_self);
       }
     }
-    7 => {
+    CpTask::TaskPosBall => {
       // Position the Ball
       // Run the steal algorithm, until we have the ball in the ball capturing zone
       // After that slowly turn the dribbler off and drive away from the ball
@@ -166,7 +165,7 @@ pub fn command(
         msg = get_ball(cp_data, vision_data, orca, world, msg, robot_self);
       }
     }
-    8 => {
+    CpTask::TaskBlock => {
       // Block a robot from receiving the ball
       // If enemy_id == None, defend own penalty area, else block robot
       match cp_data.cmd.enemy_id {
@@ -181,14 +180,11 @@ pub fn command(
       // Keep looking at the ball while moving.
       msg.orient = (ball_pos - robot_pos).angle_to_u16();
     }
-    9 => {
+    CpTask::StateKickoff => {
       // Kickoff
     }
-    11 => {
+    CpTask::StateFreekick => {
       // Free kick
-    }
-    _ => {
-      info!("Unknown task: {}", cp_data.cmd.task);
     }
   }
 

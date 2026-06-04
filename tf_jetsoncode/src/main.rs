@@ -1,10 +1,10 @@
 use crate::communication::send_cp::send_cp;
 use crate::communication::{communication_receiver, send_flags};
-use crate::proto::RobotCp;
+use crate::proto::{CpState, RobotCp};
 use crate::robot_logic::command;
 use crate::robot_logic::goalie::goalie;
 use crate::robot_logic::helpers::{allow_own_penalty_area, ball_avoidance_margin_mm, inside_field};
-use crate::robot_logic::orca::{OrcaHandle, OrcaParams, WorldSnapshot};
+use crate::robot_logic::orca::{nav_command_to_teensy, NavIntent, OrcaHandle, OrcaParams, OrcaRequest, WorldSnapshot};
 use crate::robot_logic::vec::Vec2f;
 use std::time::Duration;
 use tracing::info;
@@ -151,16 +151,20 @@ async fn main() {
     robot_self.orientation = orient;
     robot_msg.self_orient = robot_self.orientation as u16;
     // Game Logic
-    match cp_data.cmd.state {
-      0 => {
+    match CpState::try_from(cp_data.cmd.state).unwrap_or(CpState::StateUnspecified) {
+      CpState::StateUnspecified => {
         info!("UNKNOWN");
         robot_msg.set_flag(send_flags::ERROR);
       }
-      1 => {
+      CpState::StateHalt => {
         // Robot is not allowed to move
-        robot_msg.speed = 0;
+        orca.publish(OrcaRequest {
+          world,
+          intent: NavIntent::Stop,
+        });
+        robot_msg = nav_command_to_teensy(robot_msg, orca.latest());
       }
-      2 => {
+      CpState::StateStop => {
         // Robot is allowed to move with a max speed of
         // 1,5m/s (1500mm/s) & stay away from ball 500mm
         if was_goalie {
@@ -190,7 +194,7 @@ async fn main() {
         robot_msg.self_orient = orient as u16;
         robot_msg.orient = cp_data.cmd.orientation.unwrap_or_default() as u16;
       }
-      3 => {
+      CpState::StateFree => {
         // Free to listen to commands
         was_goalie = false;
         robot_msg = command(
@@ -205,7 +209,7 @@ async fn main() {
           robot_self,
         )
       }
-      4 => {
+      CpState::StateGoalie => {
         // Goalie, move into penalty area and protect the goal
         was_goalie = true;
         robot_msg = goalie(
@@ -218,12 +222,15 @@ async fn main() {
           robot_msg,
         );
       }
-      5 => {
+      CpState::StateSubstitute => {
         // Substitute
         // HALT
-        robot_msg.speed = 0;
+        orca.publish(OrcaRequest {
+          world,
+          intent: NavIntent::Stop,
+        });
+        robot_msg = nav_command_to_teensy(robot_msg, orca.latest());
       }
-      _ => {}
     }
 
     // Led's
