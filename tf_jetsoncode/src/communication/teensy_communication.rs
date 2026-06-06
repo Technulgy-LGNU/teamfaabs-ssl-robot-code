@@ -73,7 +73,7 @@ pub async fn teensy_communication(cfg: &config::Config, tx: EventShare, rx: Teen
               };
 
               let mut lock = tx.lock().await;
-              lock.2 = Some(msg);
+              lock.teensy = Some(msg);
             }
             Ok(_) => {
               // Not enough bytes - exit inner read loop and continue to write handling

@@ -25,7 +25,7 @@ pub async fn receive_cp(cfg: &config::Config, tx: EventShare) {
           if let Ok(msg) = CpRobot::decode(&buf[..size]) {
             let mut lock = tx.lock().await;
 
-            lock.0 = Some(msg);
+            lock.cp = Some(msg);
           }
         }
         Err(e) => {

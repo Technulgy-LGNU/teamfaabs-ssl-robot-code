@@ -2,7 +2,7 @@ use crate::communication::receive_cp::receive_cp;
 use crate::communication::receive_onboard_vision::receive_onboard_vision;
 use crate::communication::teensy_communication::teensy_communication;
 use crate::proto::CpRobot;
-use crate::{TEENSY_SEND_MSG_SIZE, config};
+use crate::{config, TEENSY_SEND_MSG_SIZE};
 use std::sync::Arc;
 use tokio::sync::{Mutex, Notify};
 
@@ -57,6 +57,10 @@ impl TeensyRecMSG {
 
   pub fn button(&self, idx: u8) -> bool {
     self.flags & (1 << (8 + idx)) != 0
+  }
+
+  pub fn has_any_button(&self) -> bool {
+    self.flags & 0xFF00 != 0
   }
 }
 
@@ -185,7 +189,30 @@ impl TeensyOut {
   }
 }
 
-pub type EventShare = Arc<Mutex<(Option<CpRobot>, Option<VisionMsg>, Option<TeensyRecMSG>)>>;
+#[derive(Default)]
+pub struct Events {
+  pub cp: Option<CpRobot>,
+  pub vis: Option<VisionMsg>,
+  pub teensy: Option<TeensyRecMSG>,
+}
+
+impl Events {
+  pub fn clear(&mut self) {
+    self.cp = None;
+    self.vis = None;
+    self.teensy = None;
+  }
+
+  pub fn take(&mut self) -> Self {
+    Self {
+      cp: self.cp.take(),
+      vis: self.vis.take(),
+      teensy: self.teensy.take(),
+    }
+  }
+}
+
+pub type EventShare = Arc<Mutex<Events>>;
 
 pub struct CommunicationHandles {
   pub events: EventShare,
@@ -193,7 +220,7 @@ pub struct CommunicationHandles {
 }
 
 pub async fn communication_receiver(cfg: &config::Config) -> anyhow::Result<CommunicationHandles> {
-  let events = Arc::new(Mutex::new((None, None, None)));
+  let events = Arc::new(Mutex::new(Events::default()));
   let teensy = TeensyOut::new();
 
   receive_cp(cfg, events.clone()).await;
