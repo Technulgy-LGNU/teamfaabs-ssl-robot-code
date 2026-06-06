@@ -1,5 +1,5 @@
-use std::ops::{Add, Div, Mul, Neg, Sub};
 use crate::proto::CpVector2;
+use std::ops::{Add, Div, Mul, Neg, Sub};
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct Vec2i {
@@ -76,7 +76,6 @@ impl Mul<i32> for Vec2i {
     Vec2i::new(self.x.saturating_mul(rhs), self.y.saturating_mul(rhs))
   }
 }
-
 
 impl From<Vec2f> for Vec2i {
   fn from(value: Vec2f) -> Self {
@@ -303,4 +302,3 @@ mod test {
     assert_eq!(c, crate::robot_logic::helpers::Vec2f::new(0.2f32, 4f32));
   }
 }
-

@@ -2,7 +2,7 @@ use crate::communication::receive_cp::receive_cp;
 use crate::communication::receive_onboard_vision::receive_onboard_vision;
 use crate::communication::teensy_communication::teensy_communication;
 use crate::proto::CpRobot;
-use crate::{config, TEENSY_SEND_MSG_SIZE};
+use crate::{TEENSY_SEND_MSG_SIZE, config};
 use std::sync::Arc;
 use tokio::sync::{Mutex, Notify};
 

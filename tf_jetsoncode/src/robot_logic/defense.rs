@@ -1,9 +1,9 @@
-use crate::proto::CpTrackedRobot;
-use crate::robot_logic::helpers::{own_goal_side, point_at_distance_from_a, Vec2f};
-use crate::robot_logic::orca::{
-  nav_command_to_teensy, NavIntent, OrcaRequest, Vec2i, WorldSnapshot,
-};
 use crate::Robot;
+use crate::proto::CpTrackedRobot;
+use crate::robot_logic::helpers::{Vec2f, own_goal_side, point_at_distance_from_a};
+use crate::robot_logic::orca::{
+  NavIntent, OrcaRequest, Vec2i, WorldSnapshot, nav_command_to_teensy,
+};
 
 impl<C> Robot<C> {
   #[inline]
@@ -13,7 +13,9 @@ impl<C> Robot<C> {
     // Get the robot based on its id and cannot
     let to_block_robot = match self.config.robot_team.as_str() {
       "yellow" => Vec2f::new_from_cp(
-        self.packets.cp_data
+        self
+          .packets
+          .cp_data
           .robots_blue
           .iter()
           .find(|r| r.robot_id == self.packets.cp_data.cmd.enemy_id.unwrap_or_default())
@@ -21,7 +23,9 @@ impl<C> Robot<C> {
           .pos,
       ),
       "blue" => Vec2f::new_from_cp(
-        self.packets.cp_data
+        self
+          .packets
+          .cp_data
           .robots_yellow
           .iter()
           .find(|r| r.robot_id == self.packets.cp_data.cmd.enemy_id.unwrap_or_default())
@@ -51,7 +55,10 @@ impl<C> Robot<C> {
 
   #[inline]
   pub fn defense_goal(&mut self, world: &WorldSnapshot) {
-    let goal_pos = Vec2f::new(own_goal_side(&self.config) * self.config.field.width_mm() * 0.5, 0f32);
+    let goal_pos = Vec2f::new(
+      own_goal_side(&self.config) * self.config.field.width_mm() * 0.5,
+      0f32,
+    );
     let ball_pos = Vec2f::new_from_cp(self.packets.cp_data.ball.pos);
 
     let target =
@@ -68,6 +75,5 @@ impl<C> Robot<C> {
     });
 
     nav_command_to_teensy(&mut self.packets.robot_msg, cmd);
-
   }
 }

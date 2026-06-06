@@ -1,6 +1,6 @@
-use crate::robot_logic::helpers::{raw_move_towards, raw_movement_accel};
-use crate::robot_logic::vec::{distance_vec2f, Vec2f};
 use crate::Robot;
+use crate::robot_logic::helpers::{raw_move_towards, raw_movement_accel};
+use crate::robot_logic::vec::{Vec2f, distance_vec2f};
 
 impl<C> Robot<C> {
   #[inline]
@@ -14,16 +14,16 @@ impl<C> Robot<C> {
       self.packets.robot_msg.speed = 0;
       return;
     }
-    
+
     let forward = (ball_pos - robot_pos).normalized();
     let interception_point =
       match intercept_with_constraints(robot_pos, forward, ball_pos, ball_vel) {
         Some(point) => point,
         None => robot_pos,
       };
-    
+
     raw_move_towards(&mut self.packets.robot_msg, robot_pos, interception_point);
-    
+
     if distance_vec2f(robot_pos, ball_pos) <= 100f32 {
       self.packets.robot_msg.speed = 0;
     }

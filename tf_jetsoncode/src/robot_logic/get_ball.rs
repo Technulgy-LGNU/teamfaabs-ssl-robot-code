@@ -1,9 +1,7 @@
-use crate::communication::send_flags;
 use crate::Robot;
+use crate::communication::send_flags;
 use crate::robot_logic::helpers::point_at_distance_from_a;
-use crate::robot_logic::orca::{
-  nav_command_to_teensy, NavIntent, OrcaRequest, WorldSnapshot,
-};
+use crate::robot_logic::orca::{NavIntent, OrcaRequest, WorldSnapshot, nav_command_to_teensy};
 use crate::robot_logic::vec::{Vec2f, Vec2i};
 
 /// Distance to ball where we switch to direct control
@@ -21,7 +19,7 @@ impl<C> Robot<C> {
     let ball_pos = Vec2f::new_from_cp(self.packets.cp_data.ball.pos);
     let to_ball = Vec2f::calculate_vector_2f(robot_pos, ball_pos);
     let capture_zone_to_ball =
-        Vec2f::calculate_vector_2f(ball_pos, robot_pos + direction_vec.scale(80f32)).angle_to_u16();
+      Vec2f::calculate_vector_2f(ball_pos, robot_pos + direction_vec.scale(80f32)).angle_to_u16();
 
     // Check based on the distance, if dribbler should be enabled
     if to_ball.norm() < 200f32 {
@@ -33,9 +31,9 @@ impl<C> Robot<C> {
     // Transformation vector with respected input angle
     let trans_vector = Vec2f {
       x: -to_ball.x * f32::sin((self.packets.robot_self.orientation as f32).to_radians())
-          + to_ball.y * f32::cos((self.packets.robot_self.orientation as f32).to_radians()),
+        + to_ball.y * f32::cos((self.packets.robot_self.orientation as f32).to_radians()),
       y: -to_ball.x * f32::cos((self.packets.robot_self.orientation as f32).to_radians())
-          - to_ball.y * f32::sin((self.packets.robot_self.orientation as f32).to_radians()),
+        - to_ball.y * f32::sin((self.packets.robot_self.orientation as f32).to_radians()),
     };
     if trans_vector.y.is_sign_positive() && trans_vector.x.abs() < 15f32 {
       self.packets.robot_msg.dir = self.packets.cp_data.cmd.orientation.unwrap_or_default() as u16;
@@ -50,7 +48,8 @@ impl<C> Robot<C> {
     }
 
     // else move behind the ball
-    let target = point_at_distance_from_a(ball_pos, ball_pos - direction_vec, BALL_APPROACH_DISTANCE)
+    let target =
+      point_at_distance_from_a(ball_pos, ball_pos - direction_vec, BALL_APPROACH_DISTANCE)
         .unwrap_or(ball_pos);
 
     let intent = NavIntent::GoToPosition {

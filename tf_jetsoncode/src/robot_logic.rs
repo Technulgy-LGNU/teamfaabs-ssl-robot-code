@@ -1,5 +1,5 @@
-use crate::communication::send_flags;
 use crate::Robot;
+use crate::communication::send_flags;
 use crate::proto::CpTask;
 use crate::robot_logic::orca::{
   NavIntent, OrcaRequest, Vec2i, WorldSnapshot, nav_command_to_teensy,
@@ -43,7 +43,11 @@ impl<C> Robot<C> {
         };
 
         // Check if near of pos, and then stop
-        if distance_cpv(self.packets.robot_self.pos, self.packets.cp_data.cmd.pos.unwrap_or_default()) < 10.0 {
+        if distance_cpv(
+          self.packets.robot_self.pos,
+          self.packets.cp_data.cmd.pos.unwrap_or_default(),
+        ) < 10.0
+        {
           let intent = NavIntent::Stop;
           let cmd = self.orca.step(OrcaRequest {
             intent,
@@ -64,18 +68,25 @@ impl<C> Robot<C> {
           nav_command_to_teensy(&mut self.packets.robot_msg, cmd);
         }
 
-        self.packets.robot_msg.orient = self.packets.cp_data.cmd.orientation.unwrap_or_default() as u16;
+        self.packets.robot_msg.orient =
+          self.packets.cp_data.cmd.orientation.unwrap_or_default() as u16;
       }
       CpTask::TaskKick => {
         // Kick in kick dir
 
         // First rotate robot
         // ToDo: Make more precise, when encoders arrive
-        if (self.packets.robot_self.orientation - self.packets.cp_data.cmd.kick_orient.unwrap_or_default() as i32).abs() > 30 {
+        if (self.packets.robot_self.orientation
+          - self.packets.cp_data.cmd.kick_orient.unwrap_or_default() as i32)
+          .abs()
+          > 30
+        {
           // If we are facing the right direction (variance of two degrees)
-          self.packets.robot_msg.orient = self.packets.cp_data.cmd.kick_orient.unwrap_or_default() as u16;
+          self.packets.robot_msg.orient =
+            self.packets.cp_data.cmd.kick_orient.unwrap_or_default() as u16;
         } else {
-          self.packets.robot_msg.kick_pwr = self.packets.cp_data.cmd.kick_speed.unwrap_or_default() as u8;
+          self.packets.robot_msg.kick_pwr =
+            self.packets.cp_data.cmd.kick_speed.unwrap_or_default() as u8;
           self.packets.robot_msg.set_flag(send_flags::KICK);
         }
       }
@@ -84,11 +95,17 @@ impl<C> Robot<C> {
 
         // First rotate robot
         // ToDo: Make more precise, when encoders arrive
-        if (self.packets.robot_self.orientation - self.packets.cp_data.cmd.kick_orient.unwrap_or_default() as i32).abs() > 30 {
+        if (self.packets.robot_self.orientation
+          - self.packets.cp_data.cmd.kick_orient.unwrap_or_default() as i32)
+          .abs()
+          > 30
+        {
           // If we are facing the right direction (variance of two degrees)
-          self.packets.robot_msg.orient = self.packets.cp_data.cmd.kick_orient.unwrap_or_default() as u16;
+          self.packets.robot_msg.orient =
+            self.packets.cp_data.cmd.kick_orient.unwrap_or_default() as u16;
         } else {
-          self.packets.robot_msg.kick_pwr = self.packets.cp_data.cmd.kick_speed.unwrap_or_default() as u8;
+          self.packets.robot_msg.kick_pwr =
+            self.packets.cp_data.cmd.kick_speed.unwrap_or_default() as u8;
           self.packets.robot_msg.set_flag(send_flags::CHIP);
         }
       }
@@ -152,7 +169,8 @@ impl<C> Robot<C> {
           self.packets.robot_msg.dribbler_pwr = 200;
 
           nav_command_to_teensy(&mut self.packets.robot_msg, cmd);
-        } else if robot_pos == Vec2f::new_from_cp(self.packets.cp_data.cmd.pos.unwrap_or_default()) {
+        } else if robot_pos == Vec2f::new_from_cp(self.packets.cp_data.cmd.pos.unwrap_or_default())
+        {
           // Logic to drive away from the ball
         } else {
           self.get_ball(world);
