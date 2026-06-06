@@ -2,15 +2,12 @@ use crate::communication::send_cp::send_cp;
 use crate::communication::{communication_receiver, send_flags, Events};
 use crate::config::Config;
 use crate::proto::{CpState, RobotCp};
-use crate::robot_logic::command;
-use crate::robot_logic::goalie::goalie;
 use crate::robot_logic::helpers::{allow_own_penalty_area, ball_avoidance_margin_mm, inside_field};
 use crate::robot_logic::orca::{
   nav_command_to_teensy, NavIntent, OrcaHandle, OrcaParams, OrcaRequest, WorldSnapshot,
 };
 use crate::robot_logic::vec::Vec2f;
 use crate::utils::{CommunicationChannels, PacketBuffer};
-use std::mem;
 use std::time::Duration;
 use tracing::info;
 
@@ -218,34 +215,15 @@ impl<C> Robot<C> {
           world,
           intent: NavIntent::Stop,
         });
-        self.packets.robot_msg =
-          nav_command_to_teensy(mem::take(&mut self.packets.robot_msg), self.orca.latest());
+        nav_command_to_teensy(&mut self.packets.robot_msg, self.orca.latest());
       }
       CpState::StateStop => {
         // Robot is allowed to move with a max speed of
         // 1,5m/s (1500mm/s) & stay away from ball 500mm
         if self.was_goalie {
-          self.packets.robot_msg = command(
-            &self.config,
-            &self.packets.cp_data,
-            &self.packets.vision_data,
-            &self.packets.teensy_data,
-            &self.orca,
-            &world,
-            mem::take(&mut self.packets.robot_msg),
-            true,
-            self.packets.robot_self,
-          );
+          self.command(&world, true);
         } else {
-          self.packets.robot_msg = goalie(
-            &self.config,
-            &self.packets.cp_data,
-            &self.packets.robot_self,
-            &self.packets.vision_data,
-            &self.orca,
-            &world,
-            mem::take(&mut self.packets.robot_msg),
-          );
+          self.goalie(&world);
         }
 
         self.packets.robot_msg.self_orient = orient as u16;
@@ -255,30 +233,13 @@ impl<C> Robot<C> {
       CpState::StateFree => {
         // Free to listen to commands
         self.was_goalie = false;
-        self.packets.robot_msg = command(
-          &self.config,
-          &self.packets.cp_data,
-          &self.packets.vision_data,
-          &self.packets.teensy_data,
-          &self.orca,
-          &world,
-          mem::take(&mut self.packets.robot_msg),
-          false,
-          self.packets.robot_self,
-        )
+
+        self.command(&world, false);
       }
       CpState::StateGoalie => {
         // Goalie, move into penalty area and protect the goal
         self.was_goalie = true;
-        self.packets.robot_msg = goalie(
-          &self.config,
-          &self.packets.cp_data,
-          &self.packets.robot_self,
-          &self.packets.vision_data,
-          &self.orca,
-          &world,
-          mem::take(&mut self.packets.robot_msg),
-        );
+        self.goalie(&world);
       }
       CpState::StateSubstitute => {
         // Substitute
@@ -287,8 +248,7 @@ impl<C> Robot<C> {
           world,
           intent: NavIntent::Stop,
         });
-        self.packets.robot_msg =
-          nav_command_to_teensy(mem::take(&mut self.packets.robot_msg), self.orca.latest());
+        nav_command_to_teensy(&mut self.packets.robot_msg, self.orca.latest());
       }
     }
 

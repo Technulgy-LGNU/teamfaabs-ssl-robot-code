@@ -279,11 +279,10 @@ pub struct NavCommand {
 /// If you later want finer resolution without changing the type, a common approach is to send
 /// `dir_scaled = degrees * 100` (0..36000 fits in `u16`). That does require changing your Teensy
 /// interpretation.
-pub fn nav_command_to_teensy(mut base: TeensySendMsg, nav: NavCommand) -> TeensySendMsg {
+pub fn nav_command_to_teensy(base: &mut TeensySendMsg, nav: NavCommand) {
   let (dir_deg, speed_mm_s) = vel_to_dir_speed_deg_1(nav.vel_mm_s);
   base.dir = dir_deg;
   base.speed = speed_mm_s;
-  base
 }
 
 /// Convert velocity vector (mm/s) to `(dir_degrees, speed_mm_s)`.
