@@ -45,24 +45,23 @@ impl<C> Robot<C> {
         // Check if near of pos, and then stop
         if distance_cpv(self.packets.robot_self.pos, self.packets.cp_data.cmd.pos.unwrap_or_default()) < 10.0 {
           let intent = NavIntent::Stop;
-          self.orca.publish(OrcaRequest {
+          let cmd = self.orca.step(OrcaRequest {
             intent,
             world: world.clone(),
           });
 
-          nav_command_to_teensy(&mut self.packets.robot_msg, self.orca.latest());
+          nav_command_to_teensy(&mut self.packets.robot_msg, cmd);
         } else {
           let nav_intent = NavIntent::GoToPosition {
             target_pos_mm: Vec2i::new_from_cp(self.packets.cp_data.cmd.pos.unwrap_or_default()),
             max_speed_mm_s,
           };
-          self.orca.publish(OrcaRequest {
+          let cmd = self.orca.step(OrcaRequest {
             intent: nav_intent,
             world: world.clone(),
           });
 
-          let plan = self.orca.latest();
-          nav_command_to_teensy(&mut self.packets.robot_msg, plan);
+          nav_command_to_teensy(&mut self.packets.robot_msg, cmd);
         }
 
         self.packets.robot_msg.orient = self.packets.cp_data.cmd.orientation.unwrap_or_default() as u16;
@@ -120,7 +119,7 @@ impl<C> Robot<C> {
             target_pos_mm: Vec2i::new_from_cp(self.packets.cp_data.cmd.pos.unwrap_or_default()),
             max_speed_mm_s: self.packets.cp_data.cmd.speed.unwrap_or_default(),
           };
-          self.orca.publish(OrcaRequest {
+          let cmd = self.orca.step(OrcaRequest {
             intent,
             world: world.clone(),
           });
@@ -129,7 +128,7 @@ impl<C> Robot<C> {
           self.packets.robot_msg.set_flag(send_flags::DRIBBLER);
           self.packets.robot_msg.dribbler_pwr = 200;
 
-          nav_command_to_teensy(&mut self.packets.robot_msg, self.orca.latest());
+          nav_command_to_teensy(&mut self.packets.robot_msg, cmd);
         } else {
           self.get_ball(world);
         }
@@ -143,7 +142,7 @@ impl<C> Robot<C> {
             target_pos_mm: Vec2i::new_from_cp(self.packets.cp_data.cmd.pos.unwrap_or_default()),
             max_speed_mm_s: self.packets.cp_data.cmd.speed.unwrap_or_default(),
           };
-          self.orca.publish(OrcaRequest {
+          let cmd = self.orca.step(OrcaRequest {
             intent,
             world: world.clone(),
           });
@@ -152,7 +151,7 @@ impl<C> Robot<C> {
           self.packets.robot_msg.set_flag(send_flags::DRIBBLER);
           self.packets.robot_msg.dribbler_pwr = 200;
 
-          nav_command_to_teensy(&mut self.packets.robot_msg, self.orca.latest());
+          nav_command_to_teensy(&mut self.packets.robot_msg, cmd);
         } else if robot_pos == Vec2f::new_from_cp(self.packets.cp_data.cmd.pos.unwrap_or_default()) {
           // Logic to drive away from the ball
         } else {

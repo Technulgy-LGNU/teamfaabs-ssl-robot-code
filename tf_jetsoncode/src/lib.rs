@@ -4,7 +4,7 @@ use crate::config::Config;
 use crate::proto::{CpState, RobotCp};
 use crate::robot_logic::helpers::{allow_own_penalty_area, ball_avoidance_margin_mm, inside_field};
 use crate::robot_logic::orca::{
-  nav_command_to_teensy, NavIntent, OrcaHandle, OrcaParams, OrcaRequest, WorldSnapshot,
+  nav_command_to_teensy, NavIntent, Orca, OrcaParams, OrcaRequest, WorldSnapshot,
 };
 use crate::robot_logic::vec::Vec2f;
 use crate::utils::{CommunicationChannels, PacketBuffer};
@@ -26,7 +26,7 @@ const DEFAULT_DECEL_MM_S2: u32 = 6_000;
 pub struct Robot<C = CommunicationChannels> {
   config: Config,
   params: OrcaParams,
-  orca: OrcaHandle,
+  orca: Orca,
   was_goalie: bool,
   packets: PacketBuffer,
   comm: C,
@@ -120,10 +120,9 @@ impl<C> Robot<C> {
       responsibility: 2.0,
       max_accel_mm_s2: DEFAULT_ACCEL_MM_S2,
       max_decel_mm_s2: DEFAULT_DECEL_MM_S2,
-      run_blocking: true,
     };
 
-    let orca = OrcaHandle::spawn(params);
+    let orca = Orca::new(params);
 
     Self {
       config,
@@ -170,7 +169,7 @@ impl<C> Robot<C> {
       panic!("Unknown team: {}", self.config.robot_team);
     }
   }
-  
+
   pub fn cp_packet(&self) -> RobotCp {
     RobotCp {
       robot_id: self.config.robot_id as u32,
@@ -191,7 +190,7 @@ impl<C> Robot<C> {
   pub fn step_with_data(&mut self, events: Events) -> (TeensySendMsg, RobotCp) {
     self.interpret(events);
     self.update();
-    
+
     let cp_update_data = self.cp_packet();
     (self.packets.robot_msg, cp_update_data)
   }
@@ -233,11 +232,13 @@ impl<C> Robot<C> {
       }
       CpState::StateHalt => {
         // Robot is not allowed to move
-        self.orca.publish(OrcaRequest {
+        let cmd = self.orca.step(OrcaRequest {
           world,
           intent: NavIntent::Stop,
         });
-        nav_command_to_teensy(&mut self.packets.robot_msg, self.orca.latest());
+
+
+        nav_command_to_teensy(&mut self.packets.robot_msg, cmd);
       }
       CpState::StateStop => {
         // Robot is allowed to move with a max speed of
@@ -266,11 +267,11 @@ impl<C> Robot<C> {
       CpState::StateSubstitute => {
         // Substitute
         // HALT
-        self.orca.publish(OrcaRequest {
+        let cmd = self.orca.step(OrcaRequest {
           world,
           intent: NavIntent::Stop,
         });
-        nav_command_to_teensy(&mut self.packets.robot_msg, self.orca.latest());
+        nav_command_to_teensy(&mut self.packets.robot_msg, cmd);
       }
     }
 
