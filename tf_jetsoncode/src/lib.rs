@@ -1,5 +1,5 @@
 use crate::communication::send_cp::send_cp;
-use crate::communication::{communication_receiver, send_flags, Events};
+use crate::communication::{communication_receiver, send_flags, Events, TeensySendMsg};
 use crate::config::Config;
 use crate::proto::{CpState, RobotCp};
 use crate::robot_logic::helpers::{allow_own_penalty_area, ball_avoidance_margin_mm, inside_field};
@@ -62,7 +62,7 @@ impl Robot {
 
     let comm = CommunicationChannels { rx, tx, udp_socket };
 
-    Self::new(config, comm)
+    Self::from_parts(config, comm)
   }
 
   pub async fn recv(&mut self) {
@@ -74,6 +74,65 @@ impl Robot {
     };
 
     self.interpret(events);
+  }
+
+  pub async fn run(&mut self) {
+    let mut tick = tokio::time::interval(Duration::from_millis(2)); // ~480 Hz
+    tick.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+
+    loop {
+      tick.tick().await;
+
+      self.step().await;
+    }
+  }
+
+  pub async fn step(&mut self) {
+    self.recv().await;
+    self.update();
+    self.send().await;
+  }
+
+  pub async fn send(&mut self) {
+    let buf = self.packets.robot_msg.encode();
+    self.comm.tx.publish(buf).await;
+
+    // At the end of the loop, send cp update data
+    let cp_update_data = self.cp_packet();
+
+    send_cp(&self.config, &self.comm.udp_socket, cp_update_data).await;
+  }
+}
+
+impl<C: Default> Robot<C> {
+  pub fn new(config: Config) -> Self {
+    Self::from_parts(config, C::default())
+  }
+}
+
+impl<C> Robot<C> {
+  pub fn from_parts(config: Config, comm: C) -> Self {
+    let params = OrcaParams {
+      time_horizon_ms: 1000,
+      safety_margin_mm: 30,
+      default_robot_radius_mm: 90,
+      time_step_ms: 1,
+      responsibility: 2.0,
+      max_accel_mm_s2: DEFAULT_ACCEL_MM_S2,
+      max_decel_mm_s2: DEFAULT_DECEL_MM_S2,
+      run_blocking: true,
+    };
+
+    let orca = OrcaHandle::spawn(params);
+
+    Self {
+      config,
+      orca,
+      params,
+      was_goalie: false,
+      packets: PacketBuffer::new(),
+      comm,
+    }
   }
 
   pub fn interpret(&mut self, events: Events) {
@@ -111,26 +170,9 @@ impl Robot {
       panic!("Unknown team: {}", self.config.robot_team);
     }
   }
-
-  pub async fn run(&mut self) {
-    let mut tick = tokio::time::interval(Duration::from_millis(2)); // ~480 Hz
-    tick.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
-
-    loop {
-      tick.tick().await;
-
-      self.recv().await;
-
-      self.step();
-    }
-  }
-
-  pub async fn send(&mut self) {
-    let buf = self.packets.robot_msg.encode();
-    self.comm.tx.publish(buf).await;
-
-    // At the end of the loop, send cp update data
-    let cp_update_data: RobotCp = RobotCp {
+  
+  pub fn cp_packet(&self) -> RobotCp {
+    RobotCp {
       robot_id: self.config.robot_id as u32,
       battery_voltage: Some(self.packets.teensy_data.batt_level as u32),
       current: Some(self.packets.teensy_data.current as u32),
@@ -143,38 +185,18 @@ impl Robot {
       },
       acting: Some(true),
       last_rec_packet: Some(self.packets.cp_data.packet_id),
-    };
-
-    send_cp(&self.config, &self.comm.udp_socket, cp_update_data).await;
-  }
-}
-
-impl<C> Robot<C> {
-  pub fn new(config: Config, comm: C) -> Self {
-    let params = OrcaParams {
-      time_horizon_ms: 1000,
-      safety_margin_mm: 30,
-      default_robot_radius_mm: 90,
-      time_step_ms: 1,
-      responsibility: 2.0,
-      max_accel_mm_s2: DEFAULT_ACCEL_MM_S2,
-      max_decel_mm_s2: DEFAULT_DECEL_MM_S2,
-      run_blocking: true,
-    };
-
-    let orca = OrcaHandle::spawn(params);
-
-    Self {
-      config,
-      orca,
-      params,
-      was_goalie: false,
-      packets: PacketBuffer::new(),
-      comm,
     }
   }
 
-  pub fn step(&mut self) {
+  pub fn step_with_data(&mut self, events: Events) -> (TeensySendMsg, RobotCp) {
+    self.interpret(events);
+    self.update();
+    
+    let cp_update_data = self.cp_packet();
+    (self.packets.robot_msg, cp_update_data)
+  }
+
+  pub fn update(&mut self) {
     // Orca
     let world = WorldSnapshot::from_cp(
       &self.config,
