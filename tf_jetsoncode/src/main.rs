@@ -103,7 +103,9 @@ async fn main() {
     }
 
     // Checks if the config robot_id is the same as the one send by the crashpilot
-    assert_eq!(config.robot_id, cp_data.robot_id as u8);
+    if cp_data != Default::default() {
+      assert_eq!(config.robot_id, cp_data.robot_id as u8);
+    }
 
     // Self
     if config.robot_team.as_str() == "yellow" {
@@ -153,7 +155,7 @@ async fn main() {
     // Game Logic
     match CpState::try_from(cp_data.cmd.state).unwrap_or(CpState::StateUnspecified) {
       CpState::StateUnspecified => {
-        info!("UNKNOWN");
+        // info!("UNKNOWN");
         robot_msg.set_flag(send_flags::ERROR);
       }
       CpState::StateHalt => {
