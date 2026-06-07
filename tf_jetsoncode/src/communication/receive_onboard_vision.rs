@@ -25,7 +25,7 @@ pub async fn receive_onboard_vision(cfg: &config::Config, tx: EventShare) {
 
             let mut lock = tx.lock().await;
 
-            lock.1 = Some(msg);
+            lock.vis = Some(msg);
           }
         }
         Err(e) => {

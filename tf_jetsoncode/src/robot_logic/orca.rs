@@ -20,8 +20,6 @@
 
 use std::time::{Duration, Instant};
 
-use tokio::sync::watch;
-
 use crate::communication::TeensySendMsg;
 use crate::config;
 use crate::proto::{CpRobot, CpTrackedRobot};
@@ -279,11 +277,10 @@ pub struct NavCommand {
 /// If you later want finer resolution without changing the type, a common approach is to send
 /// `dir_scaled = degrees * 100` (0..36000 fits in `u16`). That does require changing your Teensy
 /// interpretation.
-pub fn nav_command_to_teensy(mut base: TeensySendMsg, nav: NavCommand) -> TeensySendMsg {
+pub fn nav_command_to_teensy(base: &mut TeensySendMsg, nav: NavCommand) {
   let (dir_deg, speed_mm_s) = vel_to_dir_speed_deg_1(nav.vel_mm_s);
   base.dir = dir_deg;
   base.speed = speed_mm_s;
-  base
 }
 
 /// Convert velocity vector (mm/s) to `(dir_degrees, speed_mm_s)`.
@@ -337,8 +334,6 @@ pub struct OrcaParams {
   pub max_accel_mm_s2: u32,
   /// Maximum change in translational velocity when slowing down per second.
   pub max_decel_mm_s2: u32,
-  /// If true, compute runs on the blocking pool (`spawn_blocking`).
-  pub run_blocking: bool,
 }
 
 impl Default for OrcaParams {
@@ -351,7 +346,6 @@ impl Default for OrcaParams {
       responsibility: 0.5,
       max_accel_mm_s2: 2_800,
       max_decel_mm_s2: 3_800,
-      run_blocking: true,
     }
   }
 }
@@ -368,107 +362,66 @@ pub struct OrcaRequest {
 /// - If you publish 120Hz updates, but ORCA computes at 60Hz, you don't want a backlog.
 /// - `watch` channels always keep only the newest value.
 #[derive(Clone)]
-pub struct OrcaHandle {
-  tx_req: watch::Sender<OrcaRequest>,
-  rx_cmd: watch::Receiver<NavCommand>,
+pub struct Orca {
+  last_command_vel: Vec2i,
+  last_world_time: Option<Instant>,
+  params: OrcaParams,
 }
 
-impl OrcaHandle {
-  /// Spawn the ORCA worker task.
-  pub fn spawn(params: OrcaParams) -> Self {
-    let (tx_req, mut rx_req) = watch::channel(OrcaRequest {
-      world: WorldSnapshot {
-        now: Instant::now(),
-        self_id: 0,
-        ..Default::default()
-      },
-      intent: NavIntent::Stop,
-    });
-
-    let (tx_cmd, rx_cmd) = watch::channel(NavCommand::default());
-
-    tokio::spawn(async move {
-      // Local worker loop. In a real ORCA implementation you would keep allocations/cache here.
-      let mut last_command_vel = Vec2i::default();
-      let mut last_world_time: Option<Instant> = None;
-      loop {
-        // Wait for a new request (or channel closed).
-        if rx_req.changed().await.is_err() {
-          break;
-        }
-        let req = rx_req.borrow().clone();
-        let start = Instant::now();
-        let req_world_time = req.world.now;
-        let dt_s = last_world_time
-          .map(|t| req_world_time.saturating_duration_since(t).as_secs_f32())
-          .unwrap_or_else(|| (params.time_step_ms as f32 / 1000f32).max(0.001f32));
-
-        // `spawn_blocking` requires a `'static` closure, so capture by value.
-        let params = params;
-        let compute = move || {
-          let (preferred, max_speed) = preferred_velocity(&req.world, req.intent);
-          let raw_vel = orca_step(&params, &req.world, preferred, max_speed);
-          let limited = limit_velocity_change(
-            last_command_vel,
-            raw_vel,
-            dt_s,
-            params.max_accel_mm_s2 as f32,
-            params.max_decel_mm_s2 as f32,
-          );
-          // Safety filter on the final command: the rate limiter can lag the planned braking, so
-          // re-clamp the inward component to the braking limit (no go-around injection here). This
-          // is the hard guarantee that the commanded velocity never drives into a keep-out zone.
-          let self_pos = Vec2f::new_from_vec2i(req.world.self_pos_mm);
-          let vel: Vec2i =
-            apply_static_avoidance(&params, &req.world, self_pos, Vec2f::new_from_vec2i(limited), false)
-              .into();
-          let debug = OrcaDebug {
-            preferred_vel_mm_s: preferred,
-            num_neighbors: req.world.others.len() + usize::from(req.world.ball.is_some()),
-            compute_time: start.elapsed(),
-          };
-          NavCommand {
-            vel_mm_s: vel,
-            debug: Some(debug),
-          }
-        };
-
-        let cmd = if params.run_blocking {
-          tokio::task::spawn_blocking(compute)
-            .await
-            .unwrap_or_else(|_| NavCommand::default())
-        } else {
-          compute()
-        };
-
-        last_world_time = Some(req_world_time);
-        last_command_vel = cmd.vel_mm_s;
-
-        // It's okay if receivers are gone.
-        let _ = tx_cmd.send(cmd);
-      }
-    });
-
-    Self { tx_req, rx_cmd }
-  }
-
-  /// Publish the newest world+intent.
-  pub fn publish(&self, req: OrcaRequest) {
-    // `watch::Sender::send` only fails if there are no receivers, but that's fine.
-    let _ = self.tx_req.send(req);
-  }
-
-  /// Get the latest command (non-async).
-  pub fn latest(&self) -> NavCommand {
-    *self.rx_cmd.borrow()
-  }
-
-  /// Async wait for the next produced command.
-  pub async fn changed(&mut self) -> Option<NavCommand> {
-    if self.rx_cmd.changed().await.is_err() {
-      return None;
+impl Orca {
+  pub fn new(params: OrcaParams) -> Self {
+    Self {
+      last_command_vel: Vec2i::default(),
+      last_world_time: None,
+      params,
     }
-    Some(*self.rx_cmd.borrow())
+  }
+
+  pub fn step(&mut self, req: OrcaRequest) -> NavCommand {
+    let start = Instant::now();
+    let req_world_time = req.world.now;
+    let dt_s = self
+      .last_world_time
+      .map(|t| req_world_time.saturating_duration_since(t).as_secs_f32())
+      .unwrap_or_else(|| (self.params.time_step_ms as f32 / 1000f32).max(0.001f32));
+
+    let (preferred, max_speed) = preferred_velocity(&req.world, req.intent);
+    let raw_vel = orca_step(&self.params, &req.world, preferred, max_speed);
+    let limited = limit_velocity_change(
+      self.last_command_vel,
+      raw_vel,
+      dt_s,
+      self.params.max_accel_mm_s2 as f32,
+      self.params.max_decel_mm_s2 as f32,
+    );
+    // Safety filter on the final command: the rate limiter can lag the planned braking, so
+    // re-clamp the inward component to the braking limit (no go-around injection here). This
+    // is the hard guarantee that the commanded velocity never drives into a keep-out zone.
+    let self_pos = Vec2f::new_from_vec2i(req.world.self_pos_mm);
+    let vel: Vec2i = apply_static_avoidance(
+      &self.params,
+      &req.world,
+      self_pos,
+      Vec2f::new_from_vec2i(limited),
+      false,
+    )
+    .into();
+    let debug = OrcaDebug {
+      preferred_vel_mm_s: preferred,
+      num_neighbors: req.world.others.len() + usize::from(req.world.ball.is_some()),
+      compute_time: start.elapsed(),
+    };
+
+    let cmd = NavCommand {
+      vel_mm_s: vel,
+      debug: Some(debug),
+    };
+
+    self.last_world_time = Some(req_world_time);
+    self.last_command_vel = cmd.vel_mm_s;
+
+    // It's okay if receivers are gone.
+    cmd
   }
 }
 
@@ -509,8 +462,13 @@ fn orca_step(
 
   let self_pos = Vec2f::new_from_vec2i(world.self_pos_mm);
   let self_vel = Vec2f::new_from_vec2i(world.self_vel_mm_s);
-  let pref_vel =
-    apply_static_avoidance(params, world, self_pos, Vec2f::new_from_vec2i(preferred_vel), true);
+  let pref_vel = apply_static_avoidance(
+    params,
+    world,
+    self_pos,
+    Vec2f::new_from_vec2i(preferred_vel),
+    true,
+  );
 
   let lines = create_orca_lines(params, self_pos, self_vel, world, time_horizon, time_step);
   let mut new_vel = Vec2f::default();
@@ -549,7 +507,8 @@ const STATIC_BRAKE_FACTOR: f32 = 0.5;
 ///   braking limit, never grown. This is the hard guarantee that the *commanded* velocity can never
 ///   plow into a box — the rate limiter can lag the planned braking, but this filter cannot.
 fn apply_static_avoidance(
-  params: &OrcaParams, world: &WorldSnapshot, self_pos: Vec2f, mut vel: Vec2f, allow_go_around: bool,
+  params: &OrcaParams, world: &WorldSnapshot, self_pos: Vec2f, mut vel: Vec2f,
+  allow_go_around: bool,
 ) -> Vec2f {
   // Static zones are braked against the robot's own deceleration capability rather than a fixed
   // time horizon: full speed until braking distance, then a smooth stop right at the boundary.
@@ -563,19 +522,15 @@ fn apply_static_avoidance(
 
   let keepout_clearance = params.default_robot_radius_mm as f32 + PENALTY_KEEPOUT_MARGIN_MM;
   if !world.allow_own_penalty_area {
-    vel = world.field.own_penalty_rect(keepout_clearance).clamp_velocity_keep_outside(
-      self_pos,
-      vel,
-      decel,
-      allow_go_around,
-    );
+    vel = world
+      .field
+      .own_penalty_rect(keepout_clearance)
+      .clamp_velocity_keep_outside(self_pos, vel, decel, allow_go_around);
   }
-  vel = world.field.opponent_penalty_rect(keepout_clearance).clamp_velocity_keep_outside(
-    self_pos,
-    vel,
-    decel,
-    allow_go_around,
-  );
+  vel = world
+    .field
+    .opponent_penalty_rect(keepout_clearance)
+    .clamp_velocity_keep_outside(self_pos, vel, decel, allow_go_around);
 
   vel
 }
@@ -695,7 +650,9 @@ impl Rect {
     // Redirect the blocked forward motion along the boundary so the robot rounds the box at speed
     // instead of stalling. The available tangential budget keeps total speed constant.
     if allow_go_around {
-      let tang_budget = (vel.norm_squared() - max_inward * max_inward).max(0.0).sqrt();
+      let tang_budget = (vel.norm_squared() - max_inward * max_inward)
+        .max(0.0)
+        .sqrt();
       if tang_budget > tangential.norm() {
         let tang_signed = vel.dot(tangent);
         // Only trust the robot's own sideways intent when it is a meaningful fraction of its speed.
@@ -706,7 +663,11 @@ impl Rect {
           tang_signed.signum()
         } else {
           let to_center = Vec2f::default() - pos;
-          if tangent.dot(to_center) >= 0.0 { 1.0 } else { -1.0 }
+          if tangent.dot(to_center) >= 0.0 {
+            1.0
+          } else {
+            -1.0
+          }
         };
         out = tangent * (tang_budget * side) - normal * max_inward;
       }
@@ -744,7 +705,6 @@ impl Rect {
       )
     }
   }
-
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -1023,7 +983,6 @@ mod tests {
   #[test]
   fn repulsion_pushes_away() {
     let params = OrcaParams {
-      run_blocking: false,
       ..Default::default()
     };
     let world = WorldSnapshot {
@@ -1052,7 +1011,6 @@ mod tests {
   #[test]
   fn orca_result_satisfies_halfplanes() {
     let params = OrcaParams {
-      run_blocking: false,
       ..Default::default()
     };
     let world = WorldSnapshot {
@@ -1102,7 +1060,6 @@ mod tests {
   #[test]
   fn field_boundaries_clamp_outward_motion() {
     let params = OrcaParams {
-      run_blocking: false,
       ..Default::default()
     };
     let world = WorldSnapshot {
@@ -1127,7 +1084,6 @@ mod tests {
     mut world: WorldSnapshot, target: Vec2i, max_speed: u32, steps: usize,
   ) -> Vec<Vec2f> {
     let params = OrcaParams {
-      run_blocking: false,
       ..Default::default()
     };
     let dt = params.time_step_ms as f32 / 1000.0;
@@ -1148,7 +1104,8 @@ mod tests {
         params.max_decel_mm_s2 as f32,
       );
       // Mirror the worker's post-limiter safety filter.
-      let safe = apply_static_avoidance(&params, &world, pos, Vec2f::new_from_vec2i(limited), false);
+      let safe =
+        apply_static_avoidance(&params, &world, pos, Vec2f::new_from_vec2i(limited), false);
       vel = safe;
       pos = pos + vel * dt;
       path.push(pos);
@@ -1173,19 +1130,20 @@ mod tests {
   #[test]
   fn approaches_penalty_box_at_full_speed() {
     let params = OrcaParams {
-      run_blocking: false,
       ..Default::default()
     };
     // Well away from the box, aimed at it: must not be throttled by the keep-out zone.
     let world = base_world(Vec2i::new(-1_000, 0));
     let out = orca_step(&params, &world, Vec2i::new(-3_000, 0), 3_000);
-    assert!(out.x < -2_800, "should drive fast toward the box, out={out:?}");
+    assert!(
+      out.x < -2_800,
+      "should drive fast toward the box, out={out:?}"
+    );
   }
 
   #[test]
   fn operates_close_to_penalty_box() {
     let params = OrcaParams {
-      run_blocking: false,
       ..Default::default()
     };
     // The robot can sit only a few cm off the line: just outside the inflated keep-out face, with
@@ -1193,12 +1151,16 @@ mod tests {
     let line = test_field().opponent_penalty_rect(0.0);
     // Field-side face of the actual penalty area on the opponent (x-) side is at x = -3500; field
     // side is +x of it. The keep-out only pushes the center out by radius + margin.
-    let near_x = -3500 + params.default_robot_radius_mm as i32 + PENALTY_KEEPOUT_MARGIN_MM as i32 + 10;
+    let near_x =
+      -3500 + params.default_robot_radius_mm as i32 + PENALTY_KEEPOUT_MARGIN_MM as i32 + 10;
     let world = base_world(Vec2i::new(near_x, 0));
 
     // Driving tangentially (along the box) right next to it must not be throttled.
     let along = orca_step(&params, &world, Vec2i::new(0, 3_000), 3_000);
-    assert!(along.y > 2_800, "should move full speed alongside the box, out={along:?}");
+    assert!(
+      along.y > 2_800,
+      "should move full speed alongside the box, out={along:?}"
+    );
     assert!(
       !line.contains(Vec2f::new(near_x as f32, 0.0)),
       "test position should be outside the actual penalty area"
@@ -1206,28 +1168,40 @@ mod tests {
 
     // It is this close because the keep-out only inflates by radius + a small margin.
     let body_gap = (near_x as f32 + 3_500.0).abs() - params.default_robot_radius_mm as f32;
-    assert!(body_gap < 60.0, "robot body should sit within a few cm of the line: {body_gap} mm");
+    assert!(
+      body_gap < 60.0,
+      "robot body should sit within a few cm of the line: {body_gap} mm"
+    );
   }
 
   #[test]
   fn drives_around_box_to_the_far_side() {
     // Target sits on the opposite side of the box; the straight line passes through it, so the
     // robot must detour around and still arrive.
-    let path =
-      run_closed_loop(base_world(Vec2i::new(-4_000, -1_300)), Vec2i::new(-4_000, 1_300), 3_000, 800);
+    let path = run_closed_loop(
+      base_world(Vec2i::new(-4_000, -1_300)),
+      Vec2i::new(-4_000, 1_300),
+      3_000,
+      800,
+    );
     let line = test_field().opponent_penalty_rect(0.0);
     for p in &path {
-      assert!(!line.contains(*p), "robot center crossed the penalty line at {p:?}");
+      assert!(
+        !line.contains(*p),
+        "robot center crossed the penalty line at {p:?}"
+      );
     }
     let last = *path.last().unwrap();
     let reached = (last - Vec2f::new(-4_000.0, 1_300.0)).norm();
-    assert!(reached < 250.0, "robot did not get around to the far side, last={last:?}");
+    assert!(
+      reached < 250.0,
+      "robot did not get around to the far side, last={last:?}"
+    );
   }
 
   #[test]
   fn goalie_can_enter_own_penalty_area() {
     let params = OrcaParams {
-      run_blocking: false,
       ..Default::default()
     };
     let world = WorldSnapshot {
@@ -1248,7 +1222,6 @@ mod tests {
   #[test]
   fn ball_is_treated_like_a_moving_obstacle() {
     let params = OrcaParams {
-      run_blocking: false,
       ..Default::default()
     };
     let world = WorldSnapshot {
@@ -1287,6 +1260,3 @@ mod tests {
     assert_eq!(out, Vec2i::new(20, 0));
   }
 }
-
-
-

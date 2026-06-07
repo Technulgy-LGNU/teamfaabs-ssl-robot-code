@@ -57,10 +57,7 @@ pub(crate) fn clamp_to_own_penalty(cfg: &config::Config, point: Vec2f) -> Vec2f 
 }
 
 #[inline]
-pub(crate) fn raw_move_towards(
-  msg: TeensySendMsg, self_pos: Vec2f, target: Vec2f,
-) -> TeensySendMsg {
-  let mut msg = msg;
+pub(crate) fn raw_move_towards(msg: &mut TeensySendMsg, self_pos: Vec2f, target: Vec2f) {
   // Drive toward the chosen defensive target using raw field-global direction.
   let delta = target - self_pos;
   let distance = delta.norm();
@@ -73,8 +70,6 @@ pub(crate) fn raw_move_towards(
     // Simple proportional speed scaling, capped for safe goalie motion.
     raw_movement_accel(distance) as u16
   };
-
-  msg
 }
 
 #[inline]

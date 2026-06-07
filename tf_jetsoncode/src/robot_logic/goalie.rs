@@ -1,14 +1,11 @@
-use crate::communication::{TeensySendMsg, VisionMsg};
+use crate::Robot;
 use crate::config::Config;
-use crate::proto::{CpRobot, CpTrackedRobot};
 use crate::robot_logic::RAW_MAX_SPEED_MM_S;
 use crate::robot_logic::helpers::{
   clamp_to_own_penalty, inside_own_penalty_area, own_goal_side, own_goal_x, raw_move_towards,
 };
-use crate::robot_logic::orca::{
-  NavIntent, OrcaHandle, OrcaRequest, WorldSnapshot, nav_command_to_teensy,
-};
-use crate::robot_logic::vec::{lerp, Vec2f, Vec2i};
+use crate::robot_logic::orca::{NavIntent, OrcaRequest, WorldSnapshot, nav_command_to_teensy};
+use crate::robot_logic::vec::{Vec2f, Vec2i, lerp};
 
 // How far the goalie should stay in front of the goal line when guarding.
 const GOAL_LINE_MARGIN_MM: f32 = 120f32;
@@ -23,44 +20,47 @@ const SHOT_Y_MARGIN_MM: f32 = 220f32;
 // Keeps the goalie inside the goal opening instead of hugging the exact edge.
 const GUARD_Y_MARGIN_MM: f32 = 20f32;
 
-#[inline]
-pub fn goalie(
-  cfg: &Config, cp_data: &CpRobot, robot_self: &CpTrackedRobot, _vision: &VisionMsg,
-  orca: &OrcaHandle, world: &WorldSnapshot, mut msg: TeensySendMsg,
-) -> TeensySendMsg {
-  let self_pos = Vec2f::new_from_cp(robot_self.pos);
-  let ball_pos = Vec2f::new_from_cp(cp_data.ball.pos);
-  let ball_vel = cp_data
-    .ball
-    .vel
-    .map_or(Vec2f::new(0f32, 0f32), Vec2f::new_from_cp);
+impl<C> Robot<C> {
+  #[inline]
+  pub fn goalie(&mut self, world: &WorldSnapshot) {
+    let self_pos = Vec2f::new_from_cp(self.packets.robot_self.pos);
+    let ball_pos = Vec2f::new_from_cp(self.packets.cp_data.ball.pos);
+    let ball_vel = self
+      .packets
+      .cp_data
+      .ball
+      .vel
+      .map_or(Vec2f::new(0f32, 0f32), Vec2f::new_from_cp);
 
-  // Always face the ball globally, independent of the movement direction.
-  msg.orient = (ball_pos - self_pos).angle_to_u16();
+    // Always face the ball globally, independent of the movement direction.
+    self.packets.robot_msg.orient = (ball_pos - self_pos).angle_to_u16();
 
-  // Choose a defensive target: either a predicted interception point or a guard point.
-  let target = goalie_target(cfg, ball_pos, ball_vel);
-  if inside_own_penalty_area(cfg, self_pos) {
-    // Once inside the penalty area, use raw field-global motion instead of ORCA.
-    msg = raw_move_towards(msg, self_pos, target);
-    // Keep looking at the ball while moving.
-    msg.orient = (ball_pos - self_pos).angle_to_u16();
-    // msg.orient = ball_pos.scale(-1f32).angle_to_u16();
-  } else {
-    // ORCA is only used for the approach into the penalty area.
-    let intent = NavIntent::GoToPosition {
-      target_pos_mm: Vec2i::new(target.x as i32, target.y as i32),
-      max_speed_mm_s: RAW_MAX_SPEED_MM_S as u32,
-    };
-    orca.publish(OrcaRequest {
-      intent,
-      world: world.clone(),
-    });
-    msg = nav_command_to_teensy(msg, orca.latest());
-    msg.orient = (ball_pos - self_pos).angle_to_u16();
+    // Choose a defensive target: either a predicted interception point or a guard point.
+    let target = goalie_target(&self.config, ball_pos, ball_vel);
+
+    if inside_own_penalty_area(&self.config, self_pos) {
+      // Once inside the penalty area, use raw field-global motion instead of ORCA.
+      raw_move_towards(&mut self.packets.robot_msg, self_pos, target);
+
+      // Keep looking at the ball while moving.
+      self.packets.robot_msg.orient = (ball_pos - self_pos).angle_to_u16();
+      // self.packets.robot_msg.orient = ball_pos.scale(-1f32).angle_to_u16();
+    } else {
+      // ORCA is only used for the approach into the penalty area.
+      let intent = NavIntent::GoToPosition {
+        target_pos_mm: Vec2i::new(target.x as i32, target.y as i32),
+        max_speed_mm_s: RAW_MAX_SPEED_MM_S as u32,
+      };
+
+      let cmd = self.orca.step(OrcaRequest {
+        intent,
+        world: world.clone(),
+      });
+
+      nav_command_to_teensy(&mut self.packets.robot_msg, cmd);
+      self.packets.robot_msg.orient = (ball_pos - self_pos).angle_to_u16();
+    }
   }
-
-  msg
 }
 
 #[inline]

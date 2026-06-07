@@ -187,20 +187,20 @@ impl CpTask {
 /// The packet the robot should send back
 #[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct RobotCp {
-  #[prost(uint32, required, tag="1")]
+  #[prost(uint32, required, tag = "1")]
   pub robot_id: u32,
-  #[prost(uint32, optional, tag="2")]
+  #[prost(uint32, optional, tag = "2")]
   pub battery_voltage: Option<u32>,
-  #[prost(uint32, optional, tag="3")]
+  #[prost(uint32, optional, tag = "3")]
   pub current: Option<u32>,
-  #[prost(bool, required, tag="4")]
+  #[prost(bool, required, tag = "4")]
   pub kicker_ready: bool,
-  #[prost(bool, required, tag="5")]
+  #[prost(bool, required, tag = "5")]
   pub has_ball: bool,
-  #[prost(bool, optional, tag="6")]
+  #[prost(bool, optional, tag = "6")]
   pub has_error: Option<bool>,
-  #[prost(bool, optional, tag="7")]
+  #[prost(bool, optional, tag = "7")]
   pub acting: Option<bool>,
-  #[prost(uint32, optional, tag="8")]
+  #[prost(uint32, optional, tag = "8")]
   pub last_rec_packet: Option<u32>,
 }
