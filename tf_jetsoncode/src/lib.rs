@@ -1,7 +1,10 @@
 use crate::communication::send_cp::send_cp;
-use crate::communication::{Events, TeensySendMsg, communication_receiver, send_flags};
-use crate::config::Config;
-use crate::proto::{CpState, RobotCp};
+use crate::communication::communication_receiver;
+pub use crate::communication::{Events, TeensySendMsg, TeensyRecMSG, send_flags};
+pub use crate::config::Config;
+pub use crate::proto::{
+  CpBall, CpCommand, CpRobot, CpState, CpTrackedRobot, CpVector2, RobotCp,
+};
 use crate::robot_logic::helpers::{allow_own_penalty_area, ball_avoidance_margin_mm, inside_field};
 use crate::robot_logic::orca::{
   NavIntent, Orca, OrcaParams, OrcaRequest, WorldSnapshot, nav_command_to_teensy,
