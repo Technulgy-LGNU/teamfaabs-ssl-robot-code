@@ -149,7 +149,9 @@ impl<C> Robot<C> {
     }
 
     // Checks if the config robot_id is the same as the one send by the crashpilot
-    assert_eq!(self.config.robot_id, self.packets.cp_data.robot_id as u8);
+    if self.packets.cp_data != Default::default() {
+      assert_eq!(self.config.robot_id, self.packets.cp_data.robot_id as u8);
+    }
 
     // Self
     if self.config.robot_team.as_str() == "yellow" {
