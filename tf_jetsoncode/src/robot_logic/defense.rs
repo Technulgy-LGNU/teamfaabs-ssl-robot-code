@@ -42,7 +42,7 @@ impl<C> Robot<C> {
     // If target is to far away, use orca
     let intent = NavIntent::GoToPosition {
       target_pos_mm: Vec2i::new(target.x as i32, target.y as i32),
-      max_speed_mm_s: 3000,
+      max_speed_mm_s: self.packets.cp_data.cmd.speed.unwrap_or_default(),
     };
     let cmd = self.orca.step(OrcaRequest {
       intent,
@@ -66,7 +66,7 @@ impl<C> Robot<C> {
     // If target is to far away, use orca
     let intent = NavIntent::GoToPosition {
       target_pos_mm: Vec2i::new(target.x as i32, target.y as i32),
-      max_speed_mm_s: 3000,
+      max_speed_mm_s: self.packets.cp_data.cmd.speed.unwrap_or_default(),
     };
     let cmd = self.orca.step(OrcaRequest {
       intent,
