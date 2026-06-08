@@ -7,25 +7,17 @@ use std::path::Path;
 #[derive(Debug, Deserialize, Serialize)]
 pub struct Config {
   pub robot_id: u8,
-  pub robot_team: String,
-  /// Whether we play on the x+ goal or the x-
-  /// x+ is default, if false, we play on x-
-  pub robot_goal: bool,
   pub cp_config: CrashPilotConfig,
   pub onboard_vision_socket_path: String,
   pub teensy: TeensyConfig,
-  pub field: FieldConfig,
 }
 impl Default for Config {
   fn default() -> Self {
     Self {
       robot_id: 1,
-      robot_team: "yellow".to_string(),
-      robot_goal: false,
       cp_config: CrashPilotConfig::default(),
       onboard_vision_socket_path: "/tmp/ov_socket".to_string(),
       teensy: Default::default(),
-      field: Default::default(),
     }
   }
 }
@@ -57,63 +49,6 @@ impl Default for TeensyConfig {
       vid: 0x16C0,
       pid: 0x0480,
     }
-  }
-}
-
-#[derive(Debug, Deserialize, Serialize)]
-pub struct FieldConfig {
-  // General field config, everything in mm
-  width: u32,
-  height: u32,
-  runoff_width: u32,
-  penalty_area_width: u32,
-  penalty_area_height: u32,
-  goal_width: u32,
-}
-
-impl Default for FieldConfig {
-  fn default() -> Self {
-    // Default values for DIV-B
-    Self {
-      width: 9000,
-      height: 6000,
-      runoff_width: 300,
-      penalty_area_width: 2000,
-      penalty_area_height: 1000,
-      goal_width: 1600,
-    }
-  }
-}
-
-impl FieldConfig {
-  #[inline]
-  pub fn width_mm(&self) -> f32 {
-    self.width as f32
-  }
-
-  #[inline]
-  pub fn height_mm(&self) -> f32 {
-    self.height as f32
-  }
-
-  #[inline]
-  pub fn runoff_width_mm(&self) -> f32 {
-    self.runoff_width as f32
-  }
-
-  #[inline]
-  pub fn penalty_area_width_mm(&self) -> f32 {
-    self.penalty_area_width as f32
-  }
-
-  #[inline]
-  pub fn penalty_area_height_mm(&self) -> f32 {
-    self.penalty_area_height as f32
-  }
-
-  #[inline]
-  pub fn goal_width_mm(&self) -> f32 {
-    self.goal_width as f32
   }
 }
 

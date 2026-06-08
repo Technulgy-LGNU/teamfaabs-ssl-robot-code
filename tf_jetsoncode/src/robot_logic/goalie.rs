@@ -1,11 +1,11 @@
-use crate::Robot;
-use crate::config::Config;
-use crate::robot_logic::RAW_MAX_SPEED_MM_S;
+use crate::proto::CpInfos;
 use crate::robot_logic::helpers::{
   clamp_to_own_penalty, inside_own_penalty_area, own_goal_side, own_goal_x, raw_move_towards,
 };
-use crate::robot_logic::orca::{NavIntent, OrcaRequest, WorldSnapshot, nav_command_to_teensy};
-use crate::robot_logic::vec::{Vec2f, Vec2i, lerp};
+use crate::robot_logic::orca::{nav_command_to_teensy, NavIntent, OrcaRequest, WorldSnapshot};
+use crate::robot_logic::vec::{lerp, Vec2f, Vec2i};
+use crate::robot_logic::RAW_MAX_SPEED_MM_S;
+use crate::Robot;
 
 // How far the goalie should stay in front of the goal line when guarding.
 const GOAL_LINE_MARGIN_MM: f32 = 120f32;
@@ -36,9 +36,9 @@ impl<C> Robot<C> {
     self.packets.robot_msg.orient = (ball_pos - self_pos).angle_to_u16();
 
     // Choose a defensive target: either a predicted interception point or a guard point.
-    let target = goalie_target(&self.config, ball_pos, ball_vel);
+    let target = goalie_target(&self.packets.cp_data.infos, ball_pos, ball_vel);
 
-    if inside_own_penalty_area(&self.config, self_pos) {
+    if inside_own_penalty_area(&self.packets.cp_data.infos, self_pos) {
       // Once inside the penalty area, use raw field-global motion instead of ORCA.
       raw_move_towards(&mut self.packets.robot_msg, self_pos, target);
 
@@ -64,26 +64,26 @@ impl<C> Robot<C> {
 }
 
 #[inline]
-fn goalie_target(cfg: &Config, ball_pos: Vec2f, ball_vel: Vec2f) -> Vec2f {
+fn goalie_target(infos: &CpInfos, ball_pos: Vec2f, ball_vel: Vec2f) -> Vec2f {
   // Own goal is on x- or x+ depending on the robot_goal setting.
-  let goal_x = own_goal_x(cfg);
-  let goal_side = own_goal_side(cfg);
+  let goal_x = own_goal_x(infos);
+  let goal_side = own_goal_side(infos);
   // Half the goal opening, used to keep the goalie aligned with the ball.
-  let goal_half_width = cfg.field.goal_width_mm() * 0.5;
+  let goal_half_width = infos.width as f32 * 0.5;
   // The inner edge of the penalty area on our side.
-  let penalty_depth = cfg.field.penalty_area_height_mm().max(1f32);
+  let penalty_depth = infos.penalty_area_height as f32;
   let penalty_outer_x = goal_x - goal_side * penalty_depth;
 
   // If the ball is moving toward goal fast enough, try to intercept it.
-  if let Some(intercept) = predict_intercept(cfg, ball_pos, ball_vel) {
-    return clamp_to_own_penalty(cfg, intercept);
+  if let Some(intercept) = predict_intercept(infos, ball_pos, ball_vel) {
+    return clamp_to_own_penalty(infos, intercept);
   }
 
   // Otherwise, guard the goal line when the ball is close, and move further out
   // as the ball gets farther away so the robot protects more of the goal area.
   let goal_guard_x = goal_x - goal_side * GOAL_LINE_MARGIN_MM;
   let outer_guard_x = penalty_outer_x - goal_side * PENALTY_EDGE_MARGIN_MM;
-  let field_scale = (cfg.field.width_mm() * 0.5).max(1f32);
+  let field_scale = (infos.width * 0.5).max(1f32);
   // 0f32 near our goal, 1f32 near the far side of the field.
   let outward = ((ball_pos.x - goal_x).abs() / field_scale).clamp(0f32, 1f32);
 
@@ -97,9 +97,9 @@ fn goalie_target(cfg: &Config, ball_pos: Vec2f, ball_vel: Vec2f) -> Vec2f {
 }
 
 #[inline]
-pub(crate) fn predict_intercept(cfg: &Config, ball_pos: Vec2f, ball_vel: Vec2f) -> Option<Vec2f> {
-  let goal_x = own_goal_x(cfg);
-  let goal_side = own_goal_side(cfg);
+pub(crate) fn predict_intercept(infos: &CpInfos, ball_pos: Vec2f, ball_vel: Vec2f) -> Option<Vec2f> {
+  let goal_x = own_goal_x(infos);
+  let goal_side = own_goal_side(infos);
   // Positive values mean the ball is moving toward our goal line.
   let vel_toward_goal = ball_vel.x * goal_side;
 
@@ -115,7 +115,7 @@ pub(crate) fn predict_intercept(cfg: &Config, ball_pos: Vec2f, ball_vel: Vec2f) 
 
   // Estimate the y-position at impact to see whether this is actually a shot.
   let predicted_y = ball_pos.y + ball_vel.y * t_goal;
-  let goal_half_width = cfg.field.goal_width_mm() * 0.5;
+  let goal_half_width = infos.goal_width as f32 * 0.5;
   if predicted_y.abs() > goal_half_width + SHOT_Y_MARGIN_MM {
     return None;
   }

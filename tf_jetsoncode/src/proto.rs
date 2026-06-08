@@ -54,6 +54,9 @@ pub struct CpRobot {
   /// The actual command
   #[prost(message, required, tag = "7")]
   pub cmd: CpCommand,
+  /// Info about the current game, including team, field setup etc
+  #[prost(message, required, tag="8")]
+  pub infos: CpInfos,
 }
 /// The commands as enums and the fields are for stuff like drive to position and kick
 #[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
@@ -203,4 +206,28 @@ pub struct RobotCp {
   pub acting: Option<bool>,
   #[prost(uint32, optional, tag = "8")]
   pub last_rec_packet: Option<u32>,
+}
+#[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct CpInfos {
+  /// false for yellow and true for blue
+  #[prost(bool, required, tag="1")]
+  pub team_color: bool,
+  /// Our defensive site
+  /// false for x+ and true for x-
+  #[prost(bool, required, tag="2")]
+  pub team_site: bool,
+  /// General field info, used for orca
+  /// Everything is in mm
+  #[prost(uint32, required, tag="3")]
+  pub width: u32,
+  #[prost(uint32, required, tag="4")]
+  pub height: u32,
+  #[prost(uint32, required, tag="5")]
+  pub runoff_width: u32,
+  #[prost(uint32, required, tag="6")]
+  pub penalty_area_width: u32,
+  #[prost(uint32, required, tag="7")]
+  pub penalty_area_height: u32,
+  #[prost(uint32, required, tag="8")]
+  pub goal_width: u32,
 }

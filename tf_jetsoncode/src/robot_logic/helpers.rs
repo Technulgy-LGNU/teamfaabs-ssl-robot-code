@@ -1,13 +1,13 @@
 use crate::communication::TeensySendMsg;
-use crate::proto::{CpState, CpTask, CpTrackedRobot};
+use crate::proto::{CpInfos, CpState, CpTask, CpTrackedRobot};
 pub(crate) use crate::robot_logic::vec::Vec2f;
 pub(crate) use crate::robot_logic::{RAW_MAX_SPEED_MM_S, RAW_STOP_RADIUS_MM};
-use crate::{config, proto};
+use crate::proto;
 
 #[inline]
-pub(crate) fn own_goal_x(cfg: &config::Config) -> f32 {
-  let half_length = cfg.field.width_mm() * 0.5;
-  if cfg.robot_goal {
+pub(crate) fn own_goal_x(infos: &CpInfos) -> f32 {
+  let half_length = infos.width as f32 * 0.5;
+  if infos.team_site {
     -half_length
   } else {
     half_length
@@ -15,40 +15,40 @@ pub(crate) fn own_goal_x(cfg: &config::Config) -> f32 {
 }
 
 #[inline]
-pub(crate) fn own_goal_side(cfg: &config::Config) -> f32 {
-  if cfg.robot_goal { -1f32 } else { 1f32 }
+pub(crate) fn own_goal_side(infos: &CpInfos) -> f32 {
+  if infos.team_site { -1f32 } else { 1f32 }
 }
 
 #[inline]
-pub(crate) fn inside_own_penalty_area(cfg: &config::Config, pos: Vec2f) -> bool {
-  let goal_x = own_goal_x(cfg);
-  let goal_side = own_goal_side(cfg);
-  let penalty_depth = cfg.field.penalty_area_height_mm().max(1f32);
+pub(crate) fn inside_own_penalty_area(infos: &CpInfos, pos: Vec2f) -> bool {
+  let goal_x = own_goal_x(infos);
+  let goal_side = own_goal_side(infos);
+  let penalty_depth = infos.penalty_area_height as f32;
   let penalty_outer_x = goal_x - goal_side * penalty_depth;
   let x_min = goal_x.min(penalty_outer_x);
   let x_max = goal_x.max(penalty_outer_x);
-  let y_half = cfg.field.penalty_area_width_mm().max(1f32) * 0.5;
+  let y_half = infos.penalty_area_width as f32 * 0.5;
 
   pos.x >= x_min && pos.x <= x_max && pos.y >= -y_half && pos.y <= y_half
 }
 
-pub(crate) fn inside_field(cfg: &config::Config, pos: Vec2f) -> bool {
-  let x_half = cfg.field.width_mm() * 0.5 + cfg.field.runoff_width_mm();
-  let y_half = cfg.field.height_mm() * 0.5 + cfg.field.runoff_width_mm();
+pub(crate) fn inside_field(infos: &CpInfos, pos: Vec2f) -> bool {
+  let x_half = infos.width as f32 * 0.5 + infos.runoff_width as f32;
+  let y_half = infos.height as f32 * 0.5 + infos.runoff_width as f32;
 
   -pos.x >= x_half && pos.x <= x_half && pos.y >= -y_half && pos.y <= y_half
 }
 
 #[inline]
-pub(crate) fn clamp_to_own_penalty(cfg: &config::Config, point: Vec2f) -> Vec2f {
-  let goal_x = own_goal_x(cfg);
-  let goal_side = own_goal_side(cfg);
+pub(crate) fn clamp_to_own_penalty(infos: &CpInfos, point: Vec2f) -> Vec2f {
+  let goal_x = own_goal_x(infos);
+  let goal_side = own_goal_side(infos);
   // Clamp the target to the part of the penalty area we want the goalie to use.
-  let penalty_depth = cfg.field.penalty_area_height_mm().max(1f32);
+  let penalty_depth = infos.penalty_area_height as f32;
   let penalty_outer_x = goal_x - goal_side * penalty_depth;
   let x_min = goal_x.min(penalty_outer_x);
   let x_max = goal_x.max(penalty_outer_x);
-  let y_half = cfg.field.penalty_area_width_mm().max(1f32) * 0.5;
+  let y_half = infos.penalty_area_width as f32 * 0.5;
 
   Vec2f::new(
     point.x.clamp(x_min + 40f32, x_max - 40f32),

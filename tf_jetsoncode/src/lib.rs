@@ -80,7 +80,7 @@ impl Robot {
   }
 
   pub async fn run(&mut self) {
-    let mut tick = tokio::time::interval(Duration::from_millis(2)); // ~480 Hz
+    let mut tick = tokio::time::interval(Duration::from_millis(2)); // 500 Hz
     tick.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
 
     loop {
@@ -154,7 +154,7 @@ impl<C> Robot<C> {
     }
 
     // Self
-    if self.config.robot_team.as_str() == "yellow" {
+    if !self.packets.cp_data.infos.team_color {
       self.packets.robot_self = *self
         .packets
         .cp_data
@@ -162,7 +162,7 @@ impl<C> Robot<C> {
         .iter()
         .find(|r| r.robot_id == self.config.robot_id as u32)
         .unwrap_or(&self.packets.robot_self);
-    } else if self.config.robot_team.as_str() == "blue" {
+    } else if self.packets.cp_data.infos.team_color {
       self.packets.robot_self = *self
         .packets
         .cp_data
@@ -171,7 +171,7 @@ impl<C> Robot<C> {
         .find(|r| r.robot_id == self.config.robot_id as u32)
         .unwrap_or(&self.packets.robot_self);
     } else {
-      panic!("Unknown team: {}", self.config.robot_team);
+      panic!("Unknown team: {}", self.packets.cp_data.infos.team_color);
     }
   }
 
@@ -203,7 +203,6 @@ impl<C> Robot<C> {
   pub fn update(&mut self) {
     // Orca
     let world = WorldSnapshot::from_cp(
-      &self.config,
       &self.packets.cp_data,
       &self.packets.robot_self,
       self.params.default_robot_radius_mm,
@@ -289,7 +288,7 @@ impl<C> Robot<C> {
 
     // Do last check, if robot is out of field, if yes, stop && checks if the robot is visibly in the vision
     if inside_field(
-      &self.config,
+      &self.packets.cp_data.infos,
       Vec2f::new_from_cp(self.packets.robot_self.pos),
     ) || self.packets.robot_self.visibility <= 20
     {

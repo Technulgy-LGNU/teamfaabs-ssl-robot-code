@@ -17,10 +17,7 @@ impl<C> Robot<C> {
 
     let forward = (ball_pos - robot_pos).normalized();
     let interception_point =
-      match intercept_with_constraints(robot_pos, forward, ball_pos, ball_vel) {
-        Some(point) => point,
-        None => robot_pos,
-      };
+      intercept_with_constraints(robot_pos, forward, ball_pos, ball_vel).unwrap_or_else(|| robot_pos);
 
     raw_move_towards(&mut self.packets.robot_msg, robot_pos, interception_point);
 

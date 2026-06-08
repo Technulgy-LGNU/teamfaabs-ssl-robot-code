@@ -11,8 +11,9 @@ impl<C> Robot<C> {
     let ball_pos = Vec2f::new_from_cp(self.packets.cp_data.ball.pos);
 
     // Get the robot based on its id and cannot
-    let to_block_robot = match self.config.robot_team.as_str() {
-      "yellow" => Vec2f::new_from_cp(
+    let to_block_robot = match self.packets.cp_data.infos.team_color {
+      // False stands for being in the yellow team
+      false => Vec2f::new_from_cp(
         self
           .packets
           .cp_data
@@ -22,7 +23,8 @@ impl<C> Robot<C> {
           .unwrap_or(&CpTrackedRobot::default())
           .pos,
       ),
-      "blue" => Vec2f::new_from_cp(
+      // True stands for being in the blue team
+      true => Vec2f::new_from_cp(
         self
           .packets
           .cp_data
@@ -32,9 +34,6 @@ impl<C> Robot<C> {
           .unwrap_or(&CpTrackedRobot::default())
           .pos,
       ),
-      _ => {
-        panic!("Unknown robot_team: {}", self.config.robot_team);
-      }
     };
 
     let target =
@@ -56,7 +55,7 @@ impl<C> Robot<C> {
   #[inline]
   pub fn defense_goal(&mut self, world: &WorldSnapshot) {
     let goal_pos = Vec2f::new(
-      own_goal_side(&self.config) * self.config.field.width_mm() * 0.5,
+      own_goal_side(&self.packets.cp_data.infos) * self.packets.cp_data.infos.width as f32 * 0.5,
       0f32,
     );
     let ball_pos = Vec2f::new_from_cp(self.packets.cp_data.ball.pos);

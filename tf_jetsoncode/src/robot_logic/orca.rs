@@ -21,8 +21,7 @@
 use std::time::{Duration, Instant};
 
 use crate::communication::TeensySendMsg;
-use crate::config;
-use crate::proto::{CpRobot, CpTrackedRobot};
+use crate::proto::{CpInfos, CpRobot, CpTrackedRobot};
 use crate::robot_logic::vec::Vec2f;
 pub use crate::robot_logic::vec::Vec2i;
 
@@ -63,14 +62,14 @@ pub struct FieldGeometry {
 }
 
 impl FieldGeometry {
-  fn from_config(cfg: &config::Config) -> Self {
+  fn from_cp_infos(infos: &CpInfos) -> Self {
     Self {
-      width_mm: cfg.field.width_mm(),
-      height_mm: cfg.field.height_mm(),
-      runoff_width_mm: cfg.field.runoff_width_mm(),
-      penalty_area_width_mm: cfg.field.penalty_area_width_mm(),
-      penalty_area_height_mm: cfg.field.penalty_area_height_mm(),
-      robot_goal: cfg.robot_goal,
+      width_mm: infos.width as f32,
+      height_mm: infos.height as f32,
+      runoff_width_mm: infos.runoff_width as f32,
+      penalty_area_width_mm: infos.penalty_area_width as f32,
+      penalty_area_height_mm: infos.penalty_area_height as f32,
+      robot_goal: infos.team_site,
     }
   }
 
@@ -157,7 +156,7 @@ impl WorldSnapshot {
   /// - The caller is responsible for providing the correct self robot.
   /// - Units are assumed to already be *millimeters* and *millimeters/second* as described.
   pub fn from_cp(
-    cfg: &config::Config, cp: &CpRobot, self_robot: &CpTrackedRobot, default_robot_radius_mm: u32,
+    cp: &CpRobot, self_robot: &CpTrackedRobot, default_robot_radius_mm: u32,
     ball_avoidance_radius_mm: u32, allow_own_penalty_area: bool,
   ) -> Self {
     let self_id = self_robot.robot_id;
@@ -206,7 +205,7 @@ impl WorldSnapshot {
       self_orientation,
       others,
       ball,
-      field: FieldGeometry::from_config(cfg),
+      field: FieldGeometry::from_cp_infos(&cp.infos),
       allow_own_penalty_area,
     }
   }
