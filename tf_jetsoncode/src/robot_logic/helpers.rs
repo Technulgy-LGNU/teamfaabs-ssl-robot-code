@@ -1,8 +1,8 @@
 use crate::communication::TeensySendMsg;
+use crate::proto;
 use crate::proto::{CpInfos, CpState, CpTask, CpTrackedRobot};
 pub(crate) use crate::robot_logic::vec::Vec2f;
 pub(crate) use crate::robot_logic::{RAW_MAX_SPEED_MM_S, RAW_STOP_RADIUS_MM};
-use crate::proto;
 
 #[inline]
 pub(crate) fn own_goal_x(infos: &CpInfos) -> f32 {
