@@ -1,5 +1,6 @@
+use crate::communication;
 use crate::communication::{EventShare, TeensyOut};
-use crate::{communication, proto};
+use core_dump::proto;
 
 pub struct CommunicationChannels {
   pub rx: EventShare,

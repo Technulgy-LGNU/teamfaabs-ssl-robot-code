@@ -1,11 +1,11 @@
 use crate::Robot;
-use crate::proto::CpInfos;
 use crate::robot_logic::RAW_MAX_SPEED_MM_S;
 use crate::robot_logic::helpers::{
-  clamp_to_own_penalty, inside_own_penalty_area, own_goal_side, own_goal_x, raw_move_towards,
+  clamp_to_own_penalty, inside_own_penalty_area, lerp, own_goal_side, own_goal_x, raw_move_towards,
 };
 use crate::robot_logic::orca::{NavIntent, OrcaRequest, WorldSnapshot, nav_command_to_teensy};
-use crate::robot_logic::vec::{Vec2f, Vec2i, lerp};
+use core_dump::proto::CpInfos;
+use core_dump::vec::types::Vec2;
 
 // How far the goalie should stay in front of the goal line when guarding.
 const GOAL_LINE_MARGIN_MM: f32 = 120f32;
@@ -23,17 +23,17 @@ const GUARD_Y_MARGIN_MM: f32 = 20f32;
 impl<C> Robot<C> {
   #[inline]
   pub fn goalie(&mut self, world: &WorldSnapshot) {
-    let self_pos = Vec2f::new_from_cp(self.packets.robot_self.pos);
-    let ball_pos = Vec2f::new_from_cp(self.packets.cp_data.ball.pos);
+    let self_pos = Vec2::new_from_cp_vec2(self.packets.robot_self.pos);
+    let ball_pos = Vec2::new_from_cp_vec2(self.packets.cp_data.ball.pos);
     let ball_vel = self
       .packets
       .cp_data
       .ball
       .vel
-      .map_or(Vec2f::new(0f32, 0f32), Vec2f::new_from_cp);
+      .map_or(Vec2::new(0f32, 0f32), Vec2::new_from_cp_vec2);
 
     // Always face the ball globally, independent of the movement direction.
-    self.packets.robot_msg.orient = (ball_pos - self_pos).angle_to_u16();
+    self.packets.robot_msg.orient = (ball_pos - self_pos).angle_in_u16();
 
     // Choose a defensive target: either a predicted interception point or a guard point.
     let target = goalie_target(&self.packets.cp_data.infos, ball_pos, ball_vel);
@@ -43,12 +43,12 @@ impl<C> Robot<C> {
       raw_move_towards(&mut self.packets.robot_msg, self_pos, target);
 
       // Keep looking at the ball while moving.
-      self.packets.robot_msg.orient = (ball_pos - self_pos).angle_to_u16();
+      self.packets.robot_msg.orient = (ball_pos - self_pos).angle_in_u16();
       // self.packets.robot_msg.orient = ball_pos.scale(-1f32).angle_to_u16();
     } else {
       // ORCA is only used for the approach into the penalty area.
       let intent = NavIntent::GoToPosition {
-        target_pos_mm: Vec2i::new(target.x as i32, target.y as i32),
+        target_pos_mm: Vec2::new(target.x as i32, target.y as i32),
         max_speed_mm_s: RAW_MAX_SPEED_MM_S as u32,
       };
 
@@ -58,13 +58,13 @@ impl<C> Robot<C> {
       });
 
       nav_command_to_teensy(&mut self.packets.robot_msg, cmd);
-      self.packets.robot_msg.orient = (ball_pos - self_pos).angle_to_u16();
+      self.packets.robot_msg.orient = (ball_pos - self_pos).angle_in_u16();
     }
   }
 }
 
 #[inline]
-fn goalie_target(infos: &CpInfos, ball_pos: Vec2f, ball_vel: Vec2f) -> Vec2f {
+fn goalie_target(infos: &CpInfos, ball_pos: Vec2<f32>, ball_vel: Vec2<f32>) -> Vec2<f32> {
   // Own goal is on x- or x+ depending on the robot_goal setting.
   let goal_x = own_goal_x(infos);
   let goal_side = own_goal_side(infos);
@@ -87,7 +87,7 @@ fn goalie_target(infos: &CpInfos, ball_pos: Vec2f, ball_vel: Vec2f) -> Vec2f {
   // 0f32 near our goal, 1f32 near the far side of the field.
   let outward = ((ball_pos.x - goal_x).abs() / field_scale).clamp(0f32, 1f32);
 
-  Vec2f::new(
+  Vec2::new(
     lerp(goal_guard_x, outer_guard_x, outward),
     ball_pos.y.clamp(
       -goal_half_width + GUARD_Y_MARGIN_MM,
@@ -98,8 +98,8 @@ fn goalie_target(infos: &CpInfos, ball_pos: Vec2f, ball_vel: Vec2f) -> Vec2f {
 
 #[inline]
 pub(crate) fn predict_intercept(
-  infos: &CpInfos, ball_pos: Vec2f, ball_vel: Vec2f,
-) -> Option<Vec2f> {
+  infos: &CpInfos, ball_pos: Vec2<f32>, ball_vel: Vec2<f32>,
+) -> Option<Vec2<f32>> {
   let goal_x = own_goal_x(infos);
   let goal_side = own_goal_side(infos);
   // Positive values mean the ball is moving toward our goal line.
@@ -123,7 +123,7 @@ pub(crate) fn predict_intercept(
   }
 
   // Place the goalie slightly in front of the expected impact point.
-  Some(Vec2f::new(
+  Some(Vec2::new(
     goal_x - goal_side * INTERCEPT_LINE_MM,
     predicted_y,
   ))

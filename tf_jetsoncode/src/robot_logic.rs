@@ -1,10 +1,8 @@
 use crate::Robot;
 use crate::communication::send_flags;
-use crate::proto::CpTask;
-use crate::robot_logic::orca::{
-  NavIntent, OrcaRequest, Vec2i, WorldSnapshot, nav_command_to_teensy,
-};
-use crate::robot_logic::vec::{Vec2f, distance_cpv};
+use crate::robot_logic::orca::{NavIntent, OrcaRequest, WorldSnapshot, nav_command_to_teensy};
+use core_dump::proto::CpTask;
+use core_dump::vec::types::Vec2;
 
 mod defense;
 mod get_ball;
@@ -12,7 +10,6 @@ pub mod goalie;
 pub mod helpers;
 pub mod orca;
 mod receive_ball;
-pub mod vec;
 
 // If we are inside this distance in the penalty area, stop using raw motion.
 pub(crate) const RAW_STOP_RADIUS_MM: f32 = 40f32;
@@ -23,9 +20,9 @@ impl<C> Robot<C> {
   #[inline]
   pub fn command(&mut self, world: &WorldSnapshot, stop: bool) {
     // Vars
-    let robot_pos = Vec2f::new_from_cp(self.packets.robot_self.pos);
-    let ball_pos = Vec2f::new_from_cp(self.packets.cp_data.ball.pos);
-    let ball_vel = Vec2f::new_from_cp(self.packets.cp_data.ball.vel.unwrap_or_default());
+    let robot_pos = Vec2::new_from_cp_vec2(self.packets.robot_self.pos);
+    let ball_pos = Vec2::new_from_cp_vec2(self.packets.cp_data.ball.pos);
+    let ball_vel = Vec2::new_from_cp_vec2(self.packets.cp_data.ball.vel.unwrap_or_default());
 
     match CpTask::try_from(self.packets.cp_data.cmd.task).unwrap_or(CpTask::TaskUnspecified) {
       CpTask::TaskUnspecified => {
@@ -42,10 +39,10 @@ impl<C> Robot<C> {
         };
 
         // Check if near of pos, and then stop
-        if distance_cpv(
-          self.packets.robot_self.pos,
-          self.packets.cp_data.cmd.pos.unwrap_or_default(),
-        ) < 10.0
+        if (Vec2::new_from_cp_vec2(self.packets.robot_self.pos)
+          + Vec2::new_from_cp_vec2(self.packets.cp_data.cmd.pos.unwrap_or_default()))
+        .length()
+          < 10f32
         {
           let intent = NavIntent::Stop;
           let cmd = self.orca.step(OrcaRequest {
@@ -56,7 +53,10 @@ impl<C> Robot<C> {
           nav_command_to_teensy(&mut self.packets.robot_msg, cmd);
         } else {
           let nav_intent = NavIntent::GoToPosition {
-            target_pos_mm: Vec2i::new_from_cp(self.packets.cp_data.cmd.pos.unwrap_or_default()),
+            target_pos_mm: Vec2::new(
+              self.packets.cp_data.cmd.pos.unwrap_or_default().x,
+              self.packets.cp_data.cmd.pos.unwrap_or_default().y,
+            ),
             max_speed_mm_s,
           };
           let cmd = self.orca.step(OrcaRequest {
@@ -117,7 +117,7 @@ impl<C> Robot<C> {
         }
 
         // Keep looking at the ball while moving.
-        self.packets.robot_msg.orient = (ball_pos - robot_pos).angle_to_u16();
+        self.packets.robot_msg.orient = (ball_pos - robot_pos).angle_in_u16();
 
         // Always enable dribbler
         self.packets.robot_msg.set_flag(send_flags::DRIBBLER);
@@ -132,7 +132,10 @@ impl<C> Robot<C> {
         // Run the steal algorithm, until we have the ball in the ball capturing zone
         if self.packets.teensy_data.has_ball() {
           let intent = NavIntent::GoToPosition {
-            target_pos_mm: Vec2i::new_from_cp(self.packets.cp_data.cmd.pos.unwrap_or_default()),
+            target_pos_mm: Vec2::new(
+              self.packets.cp_data.cmd.pos.unwrap_or_default().x,
+              self.packets.cp_data.cmd.pos.unwrap_or_default().y,
+            ),
             max_speed_mm_s: self.packets.cp_data.cmd.speed.unwrap_or_default(),
           };
           let cmd = self.orca.step(OrcaRequest {
@@ -155,7 +158,10 @@ impl<C> Robot<C> {
         // After that slowly turn the dribbler off and drive away from the ball
         if self.packets.teensy_data.has_ball() {
           let intent = NavIntent::GoToPosition {
-            target_pos_mm: Vec2i::new_from_cp(self.packets.cp_data.cmd.pos.unwrap_or_default()),
+            target_pos_mm: Vec2::new(
+              self.packets.cp_data.cmd.pos.unwrap_or_default().x,
+              self.packets.cp_data.cmd.pos.unwrap_or_default().y,
+            ),
             max_speed_mm_s: self.packets.cp_data.cmd.speed.unwrap_or_default(),
           };
           let cmd = self.orca.step(OrcaRequest {
@@ -168,7 +174,8 @@ impl<C> Robot<C> {
           self.packets.robot_msg.dribbler_pwr = 200;
 
           nav_command_to_teensy(&mut self.packets.robot_msg, cmd);
-        } else if robot_pos == Vec2f::new_from_cp(self.packets.cp_data.cmd.pos.unwrap_or_default())
+        } else if robot_pos
+          == Vec2::new_from_cp_vec2(self.packets.cp_data.cmd.pos.unwrap_or_default())
         {
           // Logic to drive away from the ball
         } else {
@@ -188,7 +195,7 @@ impl<C> Robot<C> {
         }
 
         // Keep looking at the ball while moving.
-        self.packets.robot_msg.orient = (ball_pos - robot_pos).angle_to_u16();
+        self.packets.robot_msg.orient = (ball_pos - robot_pos).angle_in_u16();
       }
       CpTask::StateKickoff => {
         // Kickoff

@@ -1,4 +1,2 @@
-indent_style = "Visual"
 tab_spaces = 2
-fn_args_layout = "Compressed"
 fn_params_layout = "Compressed"
