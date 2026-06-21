@@ -83,7 +83,7 @@ fn goalie_target(infos: &CpInfos, ball_pos: Vec2<f32>, ball_vel: Vec2<f32>) -> V
   // as the ball gets farther away so the robot protects more of the goal area.
   let goal_guard_x = goal_x - goal_side * GOAL_LINE_MARGIN_MM;
   let outer_guard_x = penalty_outer_x - goal_side * PENALTY_EDGE_MARGIN_MM;
-  let field_scale = (infos.width * 0.5).max(1f32);
+  let field_scale = (infos.width as f32 * 0.5).max(1f32);
   // 0f32 near our goal, 1f32 near the far side of the field.
   let outward = ((ball_pos.x - goal_x).abs() / field_scale).clamp(0f32, 1f32);
 
@@ -97,7 +97,7 @@ fn goalie_target(infos: &CpInfos, ball_pos: Vec2<f32>, ball_vel: Vec2<f32>) -> V
 }
 
 #[inline]
-pub(crate) fn predict_intercept(
+pub fn predict_intercept(
   infos: &CpInfos, ball_pos: Vec2<f32>, ball_vel: Vec2<f32>,
 ) -> Option<Vec2<f32>> {
   let goal_x = own_goal_x(infos);

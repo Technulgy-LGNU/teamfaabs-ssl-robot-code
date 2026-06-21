@@ -17,7 +17,7 @@ pub struct PacketBuffer {
 }
 
 impl PacketBuffer {
-  pub fn clear(&mut self) {
+  pub fn _clear(&mut self) {
     self.cp_data = proto::CpRobot::default();
     self.vision_data = communication::VisionMsg::default();
     self.teensy_data = communication::TeensyRecMSG::default();

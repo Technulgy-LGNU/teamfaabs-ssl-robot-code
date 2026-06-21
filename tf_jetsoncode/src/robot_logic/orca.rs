@@ -160,11 +160,7 @@ impl WorldSnapshot {
   ) -> Self {
     let self_id = self_robot.robot_id;
     let self_pos_mm = Vec2::new_from_cp_vec2(self_robot.pos);
-    let self_vel_mm_s = self_robot
-      .vel
-      .as_ref()
-      .map(Vec2::new_from_cp_vec2)
-      .unwrap_or_default();
+    let self_vel_mm_s = Vec2::new(self_robot.vel.unwrap_or_default().x, self_robot.vel.unwrap_or_default().y);
     let self_orientation = Some(self_robot.orientation);
 
     let mut others = Vec::with_capacity(cp.robots_yellow.len() + cp.robots_blue.len());
@@ -186,12 +182,7 @@ impl WorldSnapshot {
     } else {
       Some(MovingObstacle {
         pos_mm: Vec2::new(cp.ball.pos.x, cp.ball.pos.y),
-        vel_mm_s: cp
-          .ball
-          .vel
-          .as_ref()
-          .map(Vec2::new_from_cp_vec2)
-          .unwrap_or_default(),
+        vel_mm_s: Vec2::new(self_robot.vel.unwrap_or_default().x, self_robot.vel.unwrap_or_default().y),
         radius_mm: ball_avoidance_radius_mm,
       })
     };
@@ -220,11 +211,7 @@ fn append_others(
     out.push(OtherRobot {
       id: r.robot_id,
       pos_mm: Vec2::new(r.pos.x, r.pos.y),
-      vel_mm_s: r
-        .vel
-        .as_ref()
-        .map(Vec2::new_from_cp_vec2)
-        .unwrap_or_default(),
+      vel_mm_s: Vec2::new(r.vel.unwrap_or_default().x, r.vel.unwrap_or_default().y),
       radius_mm: default_radius_mm,
     });
   }
@@ -245,7 +232,7 @@ pub enum NavIntent {
     max_speed_mm_s: u32,
   },
   /// Directly request a preferred velocity (world frame).
-  PreferredVelocity {
+  _PreferredVelocity {
     vel_mm_s: Vec2<i32>,
     max_speed_mm_s: u32,
   },
@@ -257,7 +244,7 @@ pub struct NavCommand {
   /// Collision-avoiding velocity in world frame.
   pub vel_mm_s: Vec2<i32>,
   /// If you want: use this to expose why ORCA chose something (debug / tuning).
-  pub debug: Option<OrcaDebug>,
+  pub _debug: Option<_OrcaDebug>,
 }
 
 /// Convert a [`NavCommand`] (world-frame velocity in mm/s) into fields understood by the Teensy.
@@ -302,16 +289,16 @@ pub fn vel_to_dir_speed_deg_1(vel_mm_s: Vec2<i32>) -> (u16, u16) {
     dir += 360.0;
   }
   // Wrap just in case numeric conversion yields 360.
-  let dir_u16 = (dir.round() as i32).rem_euclid(360) as u16;
-  let speed_u16 = speed.round().clamp(0.0, u16::MAX as f32) as u16;
+  let dir_u16 = (dir as i32).rem_euclid(360) as u16;
+  let speed_u16 = speed.clamp(0.0, u16::MAX as f32) as u16;
   (dir_u16, speed_u16)
 }
 
 #[derive(Debug, Clone, Copy, Default)]
-pub struct OrcaDebug {
-  pub preferred_vel_mm_s: Vec2<i32>,
-  pub num_neighbors: usize,
-  pub compute_time: Duration,
+pub struct _OrcaDebug {
+  pub _preferred_vel_mm_s: Vec2<i32>,
+  pub _num_neighbors: usize,
+  pub _compute_time: Duration,
 }
 
 /// Parameters for ORCA.
@@ -409,17 +396,16 @@ impl Orca {
       self_pos,
       Vec2::new(limited.x as f32, limited.y as f32),
       false,
-    )
-    .into();
-    let debug = OrcaDebug {
-      preferred_vel_mm_s: preferred,
-      num_neighbors: req.world.others.len() + usize::from(req.world.ball.is_some()),
-      compute_time: start.elapsed(),
+    );
+    let debug = _OrcaDebug {
+      _preferred_vel_mm_s: preferred,
+      _num_neighbors: req.world.others.len() + usize::from(req.world.ball.is_some()),
+      _compute_time: start.elapsed(),
     };
 
     let cmd = NavCommand {
-      vel_mm_s: vel,
-      debug: Some(debug),
+      vel_mm_s: Vec2::new(vel.x as i32, vel.y as i32),
+      _debug: Some(debug),
     };
 
     self.last_world_time = Some(req_world_time);
@@ -438,20 +424,22 @@ fn preferred_velocity(world: &WorldSnapshot, intent: NavIntent) -> (Vec2<i32>, u
       max_speed_mm_s,
     } => {
       let to_target = (target_pos_mm - world.self_pos_mm) * 2;
+      let tmp_vec = Vec2::new(to_target.x as f32, to_target.y as f32).with_speed_clamped(max_speed_mm_s as f32);
       // Simple P-controller: "direction towards target" with capped magnitude.
       // Later you can add slowing down near target, orientation constraints, etc.
       (
-        to_target.with_speed_clamped(max_speed_mm_s as i32),
+        Vec2::new(tmp_vec.x as i32, tmp_vec.y as i32),
         max_speed_mm_s,
       )
     }
-    NavIntent::PreferredVelocity {
+    NavIntent::_PreferredVelocity {
       vel_mm_s,
       max_speed_mm_s,
-    } => (
-      vel_mm_s.with_speed_clamped(max_speed_mm_s as i32),
-      max_speed_mm_s,
-    ),
+    } => {
+      let tmp_vec = Vec2::new(vel_mm_s.x as f32, vel_mm_s.y as f32).with_speed_clamped(max_speed_mm_s as f32);
+
+      (Vec2::new(tmp_vec.x as i32, tmp_vec.y as i32), max_speed_mm_s)
+    },
   }
 }
 
@@ -490,11 +478,8 @@ fn orca_step(
 
   let adjusted = apply_static_avoidance(params, world, self_pos, new_vel, true);
 
-  Vec2 {
-    x: adjusted.x.round() as i32,
-    y: adjusted.y.round() as i32,
-  }
-  .with_speed_clamped(max_speed_mm_s as i32)
+  adjusted.with_speed_clamped(max_speed_mm_s as f32);
+  Vec2::new(adjusted.x as i32, adjusted.y as i32)
 }
 
 /// Extra gap kept between the robot body and the penalty-area line, on top of the robot radius.
@@ -567,7 +552,7 @@ fn limit_velocity_change(
   let delta = desired - previous;
   let delta_len = delta.norm();
   if delta_len < 1e-12 {
-    return desired.into();
+    return Vec2::new(desired.x as i32, desired.y as i32);
   }
 
   let prev_speed = previous.norm();
@@ -579,9 +564,10 @@ fn limit_velocity_change(
   } * dt_s;
 
   if max_delta <= 0f32 || delta_len <= max_delta {
-    desired.into()
+    Vec2::new(desired.x as i32, desired.y as i32)
   } else {
-    (previous + delta / delta_len * max_delta).into()
+    let tmp_vec = previous + delta / delta_len * max_delta;
+    Vec2::new(tmp_vec.x as i32, tmp_vec.y as i32)
   }
 }
 
@@ -802,9 +788,9 @@ fn moving_obstacle_line(
           relative_position.x * combined_radius + relative_position.y * leg,
         ) / dist_sq;
       } else {
-        line.direction = -Vec2::new(
-          relative_position.x * leg + relative_position.y * combined_radius,
-          -relative_position.x * combined_radius + relative_position.y * leg,
+        line.direction = Vec2::new(
+          -(relative_position.x * leg + relative_position.y * combined_radius),
+          -(-relative_position.x * combined_radius + relative_position.y * leg),
         ) / dist_sq;
       }
       let dot_2 = relative_velocity.dot(&line.direction);
@@ -1103,12 +1089,12 @@ mod tests {
     let mut path = Vec::with_capacity(steps + 1);
     path.push(pos);
     for _ in 0..steps {
-      world.self_pos_mm = pos.into();
-      world.self_vel_mm_s = vel.into();
+      world.self_pos_mm = Vec2::new(pos.x as i32, pos.y as i32);
+      world.self_vel_mm_s = Vec2::new(vel.x as i32, vel.y as i32);
       let pref = ((target - world.self_pos_mm) * 2).with_speed_clamped(max_speed as i32);
       let raw = orca_step(&params, &world, pref, max_speed);
       let limited = limit_velocity_change(
-        vel.into(),
+        Vec2::new(vel.x as i32, vel.y as i32),
         raw,
         dt,
         params.max_accel_mm_s2 as f32,

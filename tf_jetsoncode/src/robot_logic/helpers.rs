@@ -2,9 +2,10 @@ use crate::communication::TeensySendMsg;
 use crate::robot_logic::{RAW_MAX_SPEED_MM_S, RAW_STOP_RADIUS_MM};
 use core_dump::proto::{CpInfos, CpRobot, CpState, CpTask, CpTrackedRobot};
 use core_dump::vec::types::Vec2;
+use tracing::info;
 
 #[inline]
-pub(crate) fn own_goal_x(infos: &CpInfos) -> f32 {
+pub fn own_goal_x(infos: &CpInfos) -> f32 {
   let half_length = infos.width as f32 * 0.5;
   if infos.team_site {
     -half_length
@@ -14,12 +15,12 @@ pub(crate) fn own_goal_x(infos: &CpInfos) -> f32 {
 }
 
 #[inline]
-pub(crate) fn own_goal_side(infos: &CpInfos) -> f32 {
+pub fn own_goal_side(infos: &CpInfos) -> f32 {
   if infos.team_site { -1f32 } else { 1f32 }
 }
 
 #[inline]
-pub(crate) fn inside_own_penalty_area(infos: &CpInfos, pos: Vec2<f32>) -> bool {
+pub fn inside_own_penalty_area(infos: &CpInfos, pos: Vec2<f32>) -> bool {
   let goal_x = own_goal_x(infos);
   let goal_side = own_goal_side(infos);
   let penalty_depth = infos.penalty_area_height as f32;
@@ -31,15 +32,15 @@ pub(crate) fn inside_own_penalty_area(infos: &CpInfos, pos: Vec2<f32>) -> bool {
   pos.x >= x_min && pos.x <= x_max && pos.y >= -y_half && pos.y <= y_half
 }
 
-pub(crate) fn inside_field(infos: &CpInfos, pos: Vec2<f32>) -> bool {
+#[inline]
+pub fn inside_field(infos: &CpInfos, pos: Vec2<f32>) -> bool {
   let x_half = infos.width as f32 * 0.5 + infos.runoff_width as f32;
   let y_half = infos.height as f32 * 0.5 + infos.runoff_width as f32;
-
   -pos.x >= x_half && pos.x <= x_half && pos.y >= -y_half && pos.y <= y_half
 }
 
 #[inline]
-pub(crate) fn clamp_to_own_penalty(infos: &CpInfos, point: Vec2<f32>) -> Vec2<f32> {
+pub fn clamp_to_own_penalty(infos: &CpInfos, point: Vec2<f32>) -> Vec2<f32> {
   let goal_x = own_goal_x(infos);
   let goal_side = own_goal_side(infos);
   // Clamp the target to the part of the penalty area we want the goalie to use.
@@ -56,7 +57,7 @@ pub(crate) fn clamp_to_own_penalty(infos: &CpInfos, point: Vec2<f32>) -> Vec2<f3
 }
 
 #[inline]
-pub(crate) fn raw_move_towards(msg: &mut TeensySendMsg, self_pos: Vec2<f32>, target: Vec2<f32>) {
+pub fn raw_move_towards(msg: &mut TeensySendMsg, self_pos: Vec2<f32>, target: Vec2<f32>) {
   // Drive toward the chosen defensive target using raw field-global direction.
   let delta = target - self_pos;
   let distance = delta.norm();
@@ -72,11 +73,11 @@ pub(crate) fn raw_move_towards(msg: &mut TeensySendMsg, self_pos: Vec2<f32>, tar
 }
 
 #[inline]
-pub(crate) fn raw_movement_accel(dist: f32) -> f32 {
+pub fn raw_movement_accel(dist: f32) -> f32 {
   (dist * 3.0).clamp(60.0, RAW_MAX_SPEED_MM_S)
 }
 
-pub(crate) fn ball_avoidance_margin_mm(cp_data: &CpRobot, robot_self: CpTrackedRobot) -> u32 {
+pub fn ball_avoidance_margin_mm(cp_data: &CpRobot, robot_self: CpTrackedRobot) -> u32 {
   match CpState::try_from(cp_data.cmd.state).unwrap_or(CpState::StateUnspecified) {
     CpState::StateStop => 550,
     CpState::StateFree => {
@@ -106,7 +107,7 @@ pub(crate) fn ball_avoidance_margin_mm(cp_data: &CpRobot, robot_self: CpTrackedR
   }
 }
 
-pub(crate) fn allow_own_penalty_area(cp_data: &CpRobot) -> bool {
+pub fn allow_own_penalty_area(cp_data: &CpRobot) -> bool {
   matches!(
     CpState::try_from(cp_data.cmd.state),
     Ok(CpState::StateGoalie)

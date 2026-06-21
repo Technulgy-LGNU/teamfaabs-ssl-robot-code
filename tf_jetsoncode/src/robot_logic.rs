@@ -3,6 +3,7 @@ use crate::communication::send_flags;
 use crate::robot_logic::orca::{NavIntent, OrcaRequest, WorldSnapshot, nav_command_to_teensy};
 use core_dump::proto::CpTask;
 use core_dump::vec::types::Vec2;
+use tracing::info;
 
 mod defense;
 mod get_ball;
@@ -12,9 +13,9 @@ pub mod orca;
 mod receive_ball;
 
 // If we are inside this distance in the penalty area, stop using raw motion.
-pub(crate) const RAW_STOP_RADIUS_MM: f32 = 40f32;
+pub const RAW_STOP_RADIUS_MM: f32 = 40f32;
 // Maximum translational speed for raw goalie movement inside the penalty area.
-pub(crate) const RAW_MAX_SPEED_MM_S: f32 = 4_000f32;
+pub const RAW_MAX_SPEED_MM_S: f32 = 4_000f32;
 
 impl<C> Robot<C> {
   #[inline]
@@ -27,7 +28,7 @@ impl<C> Robot<C> {
     match CpTask::try_from(self.packets.cp_data.cmd.task).unwrap_or(CpTask::TaskUnspecified) {
       CpTask::TaskUnspecified => {
         // UNKNOWN
-        println!("UNKNOWN");
+        info!("UNKNOWN");
         self.packets.robot_msg.set_flag(send_flags::ERROR);
       }
       CpTask::TaskPos => {
@@ -78,7 +79,7 @@ impl<C> Robot<C> {
         if (self.packets.robot_self.orientation
           - self.packets.cp_data.cmd.kick_orient.unwrap_or_default() as i32)
           .abs()
-          > 30
+          > 4
         {
           // If we are facing the right direction (variance of two degrees)
           self.packets.robot_msg.orient =
@@ -93,11 +94,10 @@ impl<C> Robot<C> {
         // Chip in kick dir
 
         // First rotate robot
-        // ToDo: Make more precise, when encoders arrive
         if (self.packets.robot_self.orientation
           - self.packets.cp_data.cmd.kick_orient.unwrap_or_default() as i32)
           .abs()
-          > 30
+          > 4
         {
           // If we are facing the right direction (variance of two degrees)
           self.packets.robot_msg.orient =
@@ -110,14 +110,19 @@ impl<C> Robot<C> {
       }
       CpTask::TaskRecKick => {
         // Rec Kick
-        if ball_vel.norm() >= 200f32 {
-          self.receive_ball();
-        } else {
+        // Check if ball is in capturing zone
+        if self.packets.teensy_data.has_ball() {
           self.packets.robot_msg.speed = 0;
-        }
+        } else {
+          if ball_vel.norm() >= 200f32 {
+            self.receive_ball();
+          } else {
+            self.packets.robot_msg.speed = 0;
+          }
 
-        // Keep looking at the ball while moving.
-        self.packets.robot_msg.orient = (ball_pos - robot_pos).angle_in_u16();
+          // Keep looking at the ball while moving.
+          self.packets.robot_msg.orient = (ball_pos - robot_pos).angle_in_u16();
+        }
 
         // Always enable dribbler
         self.packets.robot_msg.set_flag(send_flags::DRIBBLER);
@@ -125,7 +130,15 @@ impl<C> Robot<C> {
       }
       CpTask::TaskSteal => {
         // Steal Ball
-        self.get_ball(world);
+        if self.packets.teensy_data.has_ball() {
+          self.packets.robot_msg.speed = 0;
+        } else {
+          self.get_ball(world);
+        }
+
+        // Always enable dribbler
+        self.packets.robot_msg.set_flag(send_flags::DRIBBLER);
+        self.packets.robot_msg.dribbler_pwr = 200;
       }
       CpTask::TaskDribble => {
         // Dribble the Ball

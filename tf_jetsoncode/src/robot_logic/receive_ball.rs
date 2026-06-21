@@ -4,7 +4,7 @@ use core_dump::vec::types::Vec2;
 
 impl<C> Robot<C> {
   #[inline]
-  pub(crate) fn receive_ball(&mut self) {
+  pub fn receive_ball(&mut self) {
     let robot_pos = Vec2::new_from_cp_vec2(self.packets.robot_self.pos);
     let ball_pos = Vec2::new_from_cp_vec2(self.packets.cp_data.ball.pos);
     let ball_vel = Vec2::new_from_cp_vec2(self.packets.cp_data.ball.vel.unwrap_or_default());

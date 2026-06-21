@@ -7,7 +7,7 @@ use crate::robot_logic::orca::{
   NavIntent, Orca, OrcaParams, OrcaRequest, WorldSnapshot, nav_command_to_teensy,
 };
 use crate::utils::{CommunicationChannels, PacketBuffer};
-use core_dump::proto::{CpBall, CpCommand, CpRobot, CpState, CpTrackedRobot, CpVector2, RobotCp};
+use core_dump::proto::{CpState, RobotCp};
 use core_dump::vec::types::Vec2;
 use std::time::Duration;
 use tracing::info;
@@ -30,6 +30,7 @@ pub struct Robot<C = CommunicationChannels> {
   was_goalie: bool,
   packets: PacketBuffer,
   comm: C,
+  piep: bool
 }
 
 impl Robot {
@@ -131,6 +132,7 @@ impl<C> Robot<C> {
       was_goalie: false,
       packets: PacketBuffer::new(),
       comm,
+      piep: false,
     }
   }
 
@@ -277,6 +279,11 @@ impl<C> Robot<C> {
 
     // Led's
     // Depending on different states, set the led's on the mainboard
+    // if !self.piep {
+    //   self.packets.robot_msg.flags[15] = 1;
+    // } else {
+    //   self.packets.robot_msg.flags[15] = 0;
+    // }
 
     // After logic, send new robot command
     self.packets.robot_msg.state = self.packets.cp_data.cmd.state as u8;
@@ -291,5 +298,7 @@ impl<C> Robot<C> {
     {
       self.packets.robot_msg.speed = 0;
     }
+
+    info!("{:?}", self.packets.robot_msg.dir)
   }
 }

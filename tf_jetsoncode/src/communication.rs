@@ -49,7 +49,7 @@ impl TeensyRecMSG {
 
   pub fn kick_ready(&self) -> bool {
     self.flags & (1 << 2) != 0
-  }
+  }  //PENISSSSSSSSSSS
 
   pub fn chip_ready(&self) -> bool {
     self.flags & (1 << 3) != 0
