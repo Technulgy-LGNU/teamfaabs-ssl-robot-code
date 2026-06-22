@@ -1,5 +1,5 @@
 use crate::Robot;
-use crate::proto::CpInfos;
+use core_dump::proto::CpInfos;
 use crate::robot_logic::RAW_MAX_SPEED_MM_S;
 use crate::robot_logic::helpers::{
   clamp_to_own_penalty, inside_own_penalty_area, own_goal_side, own_goal_x, raw_move_towards,

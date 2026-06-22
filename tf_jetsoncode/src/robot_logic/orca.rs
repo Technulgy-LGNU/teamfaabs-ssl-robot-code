@@ -21,7 +21,7 @@
 use std::time::{Duration, Instant};
 
 use crate::communication::TeensySendMsg;
-use crate::proto::{CpInfos, CpRobot, CpTrackedRobot};
+use core_dump::proto::{CpInfos, CpRobot, CpTrackedRobot};
 use crate::robot_logic::vec::Vec2f;
 pub use crate::robot_logic::vec::Vec2i;
 

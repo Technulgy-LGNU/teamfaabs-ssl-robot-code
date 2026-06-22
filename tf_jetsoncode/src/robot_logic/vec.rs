@@ -1,4 +1,4 @@
-use crate::proto::CpVector2;
+use core_dump::proto::CpVector2;
 use std::ops::{Add, Div, Mul, Neg, Sub};
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]

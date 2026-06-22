@@ -1,6 +1,6 @@
+use core_dump::proto;
 use crate::communication::TeensySendMsg;
-use crate::proto;
-use crate::proto::{CpInfos, CpState, CpTask, CpTrackedRobot};
+use core_dump::proto::{CpInfos, CpState, CpTask, CpTrackedRobot};
 pub(crate) use crate::robot_logic::vec::Vec2f;
 pub(crate) use crate::robot_logic::{RAW_MAX_SPEED_MM_S, RAW_STOP_RADIUS_MM};
 

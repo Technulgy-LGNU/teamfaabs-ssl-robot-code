@@ -1,5 +1,5 @@
 use crate::Robot;
-use crate::proto::CpTrackedRobot;
+use core_dump::proto::CpTrackedRobot;
 use crate::robot_logic::helpers::{Vec2f, own_goal_side, point_at_distance_from_a};
 use crate::robot_logic::orca::{
   NavIntent, OrcaRequest, Vec2i, WorldSnapshot, nav_command_to_teensy,

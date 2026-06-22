@@ -1,6 +1,6 @@
 use crate::Robot;
 use crate::communication::send_flags;
-use crate::proto::CpTask;
+use core_dump::proto::CpTask;
 use crate::robot_logic::orca::{
   NavIntent, OrcaRequest, Vec2i, WorldSnapshot, nav_command_to_teensy,
 };
