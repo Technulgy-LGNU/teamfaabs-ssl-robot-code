@@ -186,6 +186,7 @@ impl<C> Robot<C> {
       },
       acting: Some(true),
       last_rec_packet: Some(self.packets.cp_data.packet_id),
+      timestamp: self.packets.cp_data.timestamp,
     }
   }
 
