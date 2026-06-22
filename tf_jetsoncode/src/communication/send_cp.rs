@@ -1,5 +1,5 @@
 use crate::config;
-use core_dump::proto::RobotCp;
+use crate::proto::RobotCp;
 use prost::Message;
 use std::net::{SocketAddr, SocketAddrV4};
 use tokio::net::UdpSocket;

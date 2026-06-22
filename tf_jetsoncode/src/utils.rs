@@ -1,6 +1,5 @@
-use crate::communication;
 use crate::communication::{EventShare, TeensyOut};
-use core_dump::proto;
+use crate::{communication, proto};
 
 pub struct CommunicationChannels {
   pub rx: EventShare,
@@ -17,7 +16,7 @@ pub struct PacketBuffer {
 }
 
 impl PacketBuffer {
-  pub fn _clear(&mut self) {
+  pub fn clear(&mut self) {
     self.cp_data = proto::CpRobot::default();
     self.vision_data = communication::VisionMsg::default();
     self.teensy_data = communication::TeensyRecMSG::default();

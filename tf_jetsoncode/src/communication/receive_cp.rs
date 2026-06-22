@@ -1,6 +1,6 @@
 use crate::communication::EventShare;
 use crate::config;
-use core_dump::proto::CpRobot;
+use crate::proto::CpRobot;
 use prost::Message;
 
 pub async fn receive_cp(cfg: &config::Config, tx: EventShare) {

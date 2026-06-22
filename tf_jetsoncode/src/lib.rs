@@ -2,18 +2,19 @@ use crate::communication::communication_receiver;
 use crate::communication::send_cp::send_cp;
 pub use crate::communication::{Events, TeensyRecMSG, TeensySendMsg, send_flags};
 pub use crate::config::Config;
+pub use crate::proto::{CpBall, CpCommand, CpRobot, CpState, CpTrackedRobot, CpVector2, RobotCp};
 use crate::robot_logic::helpers::{allow_own_penalty_area, ball_avoidance_margin_mm, inside_field};
 use crate::robot_logic::orca::{
   NavIntent, Orca, OrcaParams, OrcaRequest, WorldSnapshot, nav_command_to_teensy,
 };
+use crate::robot_logic::vec::Vec2f;
 use crate::utils::{CommunicationChannels, PacketBuffer};
-use core_dump::proto::{CpState, RobotCp};
-use core_dump::vec::types::Vec2;
 use std::time::Duration;
 use tracing::info;
 
 mod communication;
 mod config;
+mod proto;
 mod robot_logic;
 mod utils;
 
@@ -30,7 +31,6 @@ pub struct Robot<C = CommunicationChannels> {
   was_goalie: bool,
   packets: PacketBuffer,
   comm: C,
-  piep: bool
 }
 
 impl Robot {
@@ -132,7 +132,6 @@ impl<C> Robot<C> {
       was_goalie: false,
       packets: PacketBuffer::new(),
       comm,
-      piep: false,
     }
   }
 
@@ -279,11 +278,6 @@ impl<C> Robot<C> {
 
     // Led's
     // Depending on different states, set the led's on the mainboard
-    // if !self.piep {
-    //   self.packets.robot_msg.flags[15] = 1;
-    // } else {
-    //   self.packets.robot_msg.flags[15] = 0;
-    // }
 
     // After logic, send new robot command
     self.packets.robot_msg.state = self.packets.cp_data.cmd.state as u8;
@@ -293,12 +287,10 @@ impl<C> Robot<C> {
     // Do last check, if robot is out of field, if yes, stop && checks if the robot is visibly in the vision
     if inside_field(
       &self.packets.cp_data.infos,
-      Vec2::new_from_cp_vec2(self.packets.robot_self.pos),
+      Vec2f::new_from_cp(self.packets.robot_self.pos),
     ) || self.packets.robot_self.visibility <= 20
     {
       self.packets.robot_msg.speed = 0;
     }
-
-    info!("{:?}", self.packets.robot_msg.dir)
   }
 }

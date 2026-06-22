@@ -1,13 +1,13 @@
 use crate::Robot;
 use crate::robot_logic::helpers::{raw_move_towards, raw_movement_accel};
-use core_dump::vec::types::Vec2;
+use crate::robot_logic::vec::{Vec2f, distance_vec2f};
 
 impl<C> Robot<C> {
   #[inline]
-  pub fn receive_ball(&mut self) {
-    let robot_pos = Vec2::new_from_cp_vec2(self.packets.robot_self.pos);
-    let ball_pos = Vec2::new_from_cp_vec2(self.packets.cp_data.ball.pos);
-    let ball_vel = Vec2::new_from_cp_vec2(self.packets.cp_data.ball.vel.unwrap_or_default());
+  pub(crate) fn receive_ball(&mut self) {
+    let robot_pos = Vec2f::new_from_cp(self.packets.robot_self.pos);
+    let ball_pos = Vec2f::new_from_cp(self.packets.cp_data.ball.pos);
+    let ball_vel = Vec2f::new_from_cp(self.packets.cp_data.ball.vel.unwrap_or_default());
 
     // Check if ball is even moving towards robot
     if !is_moving_towards(ball_pos, ball_vel, robot_pos, 2000f32) {
@@ -21,7 +21,7 @@ impl<C> Robot<C> {
 
     raw_move_towards(&mut self.packets.robot_msg, robot_pos, interception_point);
 
-    if (robot_pos + ball_pos).length() <= 100f32 {
+    if distance_vec2f(robot_pos, ball_pos) <= 100f32 {
       self.packets.robot_msg.speed = 0;
     }
   }
@@ -29,17 +29,17 @@ impl<C> Robot<C> {
 
 #[inline]
 fn intercept_with_constraints(
-  robot_pos: Vec2<f32>,
-  forward: Vec2<f32>, // normalized direction robot considers "front"
-  ball_pos: Vec2<f32>,
-  ball_vel: Vec2<f32>,
-) -> Option<Vec2<f32>> {
+  robot_pos: Vec2f,
+  forward: Vec2f, // normalized direction robot considers "front"
+  ball_pos: Vec2f,
+  ball_vel: Vec2f,
+) -> Option<Vec2f> {
   let max_t = 10f32; // horizon in seconds (tune)
 
   let mut lo = 0f32;
   let mut hi = max_t;
 
-  let mut best: Option<(f32, Vec2<f32>)> = None;
+  let mut best: Option<(f32, Vec2f)> = None;
 
   for _ in 0..30 {
     let mid = (lo + hi) * 0.5;
@@ -49,7 +49,7 @@ fn intercept_with_constraints(
     let to_ball = ball_p - robot_pos;
 
     // reject "front" targets
-    if to_ball.dot(&forward) > 0f32 {
+    if to_ball.dot(forward) > 0f32 {
       lo = mid;
       continue;
     }
@@ -73,7 +73,7 @@ fn intercept_with_constraints(
 
 #[inline]
 fn is_moving_towards(
-  ball_pos: Vec2<f32>, ball_vel: Vec2<f32>, robot_pos: Vec2<f32>, intercept_radius: f32,
+  ball_pos: Vec2f, ball_vel: Vec2f, robot_pos: Vec2f, intercept_radius: f32,
 ) -> bool {
   let v2 = ball_vel.norm_squared();
 
@@ -81,7 +81,7 @@ fn is_moving_towards(
     return false;
   }
 
-  let t = (robot_pos - ball_pos).dot(&ball_vel) / v2;
+  let t = (robot_pos - ball_pos).dot(ball_vel) / v2;
 
   if t < -0.5 {
     return false; // closest approach already passed far in the past

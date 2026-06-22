@@ -1,8 +1,8 @@
 use crate::communication::receive_cp::receive_cp;
 use crate::communication::receive_onboard_vision::receive_onboard_vision;
 use crate::communication::teensy_communication::teensy_communication;
+use crate::proto::CpRobot;
 use crate::{TEENSY_SEND_MSG_SIZE, config};
-use core_dump::proto::CpRobot;
 use std::sync::Arc;
 use tokio::sync::{Mutex, Notify};
 
@@ -49,7 +49,7 @@ impl TeensyRecMSG {
 
   pub fn kick_ready(&self) -> bool {
     self.flags & (1 << 2) != 0
-  }  //PENISSSSSSSSSSS
+  }
 
   pub fn chip_ready(&self) -> bool {
     self.flags & (1 << 3) != 0
