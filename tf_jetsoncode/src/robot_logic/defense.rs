@@ -1,9 +1,9 @@
 use crate::Robot;
-use core_dump::proto::CpTrackedRobot;
 use crate::robot_logic::helpers::{Vec2f, own_goal_side, point_at_distance_from_a};
 use crate::robot_logic::orca::{
   NavIntent, OrcaRequest, Vec2i, WorldSnapshot, nav_command_to_teensy,
 };
+use core_dump::proto::CpTrackedRobot;
 
 impl<C> Robot<C> {
   #[inline]
@@ -44,12 +44,12 @@ impl<C> Robot<C> {
       target_pos_mm: Vec2i::new(target.x as i32, target.y as i32),
       max_speed_mm_s: self.packets.cp_data.cmd.speed.unwrap_or_default(),
     };
-    let cmd = self.orca.step(OrcaRequest {
+    self.orca.publish(OrcaRequest {
       intent,
       world: world.clone(),
     });
 
-    nav_command_to_teensy(&mut self.packets.robot_msg, cmd);
+    nav_command_to_teensy(&mut self.packets.robot_msg, self.orca.latest());
   }
 
   #[inline]
@@ -68,11 +68,11 @@ impl<C> Robot<C> {
       target_pos_mm: Vec2i::new(target.x as i32, target.y as i32),
       max_speed_mm_s: self.packets.cp_data.cmd.speed.unwrap_or_default(),
     };
-    let cmd = self.orca.step(OrcaRequest {
+    self.orca.publish(OrcaRequest {
       intent,
       world: world.clone(),
     });
 
-    nav_command_to_teensy(&mut self.packets.robot_msg, cmd);
+    nav_command_to_teensy(&mut self.packets.robot_msg, self.orca.latest());
   }
 }

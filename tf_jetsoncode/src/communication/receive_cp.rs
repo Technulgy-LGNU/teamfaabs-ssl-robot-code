@@ -17,19 +17,34 @@ pub async fn receive_cp(cfg: &config::Config, tx: EventShare) {
     };
 
   tokio::spawn(async move {
-    let mut buf = [0u8; 1024];
+    let mut buf = [0u8; 65536];
 
     loop {
       match cp_socket.recv_from(&mut buf).await {
         Ok((size, _)) => {
-          if let Ok(msg) = CpRobot::decode(&buf[..size]) {
-            let mut lock = tx.lock().await;
+          if let Ok(mut latest_msg) = CpRobot::decode(&buf[..size]) {
+            // Drain all buffered packets, keeping only the most recent
+            loop {
+              match cp_socket.try_recv_from(&mut buf) {
+                Ok((size, _)) => {
+                  if let Ok(msg) = CpRobot::decode(&buf[..size]) {
+                    latest_msg = msg;
+                  }
+                }
+                Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => break,
+                Err(e) => {
+                  eprintln!("recv error: {:?}", e);
+                  break;
+                }
+              }
+            }
 
-            lock.cp = Some(msg);
+            let mut lock = tx.lock().await;
+            lock.cp = Some(latest_msg);
           }
         }
         Err(e) => {
-          eprintln!("Failed to read CP UDP: {}", e);
+          eprintln!("recv error: {:?}", e);
         }
       }
     }

@@ -2,14 +2,16 @@ use crate::communication::communication_receiver;
 use crate::communication::send_cp::send_cp;
 pub use crate::communication::{Events, TeensyRecMSG, TeensySendMsg, send_flags};
 pub use crate::config::Config;
-pub use core_dump::proto::{CpBall, CpCommand, CpRobot, CpState, CpTrackedRobot, CpVector2, RobotCp};
 use crate::robot_logic::helpers::{allow_own_penalty_area, ball_avoidance_margin_mm, inside_field};
 use crate::robot_logic::orca::{
-  NavIntent, Orca, OrcaParams, OrcaRequest, WorldSnapshot, nav_command_to_teensy,
+  NavIntent, OrcaHandle, OrcaParams, OrcaRequest, WorldSnapshot, nav_command_to_teensy,
 };
 use crate::robot_logic::vec::Vec2f;
 use crate::utils::{CommunicationChannels, PacketBuffer};
-use std::time::Duration;
+pub use core_dump::proto::{
+  CpBall, CpCommand, CpRobot, CpState, CpTrackedRobot, CpVector2, RobotCp,
+};
+use std::time::{Duration, Instant};
 use tracing::info;
 
 mod communication;
@@ -26,7 +28,7 @@ const DEFAULT_DECEL_MM_S2: u32 = 6_000;
 pub struct Robot<C = CommunicationChannels> {
   config: Config,
   params: OrcaParams,
-  orca: Orca,
+  orca: OrcaHandle,
   was_goalie: bool,
   packets: PacketBuffer,
   comm: C,
@@ -77,7 +79,7 @@ impl Robot {
   }
 
   pub async fn run(&mut self) {
-    let mut tick = tokio::time::interval(Duration::from_millis(2)); // 500 Hz
+    let mut tick = tokio::time::interval(Duration::from_millis(4)); // 500 Hz
     tick.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
 
     loop {
@@ -120,9 +122,10 @@ impl<C> Robot<C> {
       responsibility: 2.0,
       max_accel_mm_s2: DEFAULT_ACCEL_MM_S2,
       max_decel_mm_s2: DEFAULT_DECEL_MM_S2,
+      run_blocking: true,
     };
 
-    let orca = Orca::new(params);
+    let orca = OrcaHandle::spawn(params);
 
     Self {
       config,
@@ -234,12 +237,12 @@ impl<C> Robot<C> {
       }
       CpState::StateHalt => {
         // Robot is not allowed to move
-        let cmd = self.orca.step(OrcaRequest {
+        self.orca.publish(OrcaRequest {
           world,
           intent: NavIntent::Stop,
         });
 
-        nav_command_to_teensy(&mut self.packets.robot_msg, cmd);
+        nav_command_to_teensy(&mut self.packets.robot_msg, self.orca.latest());
       }
       CpState::StateStop => {
         // Robot is allowed to move with a max speed of
@@ -268,11 +271,11 @@ impl<C> Robot<C> {
       CpState::StateSubstitute => {
         // Substitute
         // HALT
-        let cmd = self.orca.step(OrcaRequest {
+        self.orca.publish(OrcaRequest {
           world,
           intent: NavIntent::Stop,
         });
-        nav_command_to_teensy(&mut self.packets.robot_msg, cmd);
+        nav_command_to_teensy(&mut self.packets.robot_msg, self.orca.latest());
       }
     }
 
