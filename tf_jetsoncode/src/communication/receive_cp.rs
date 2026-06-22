@@ -39,7 +39,7 @@ pub async fn receive_cp(cfg: &config::Config, tx: EventShare) {
               }
             }
 
-            let mut lock = tx.lock().await;
+            let mut lock = tx.write().await;
             lock.cp = Some(latest_msg);
           }
         }

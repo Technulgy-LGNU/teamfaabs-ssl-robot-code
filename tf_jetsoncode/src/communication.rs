@@ -4,7 +4,7 @@ use crate::communication::teensy_communication::teensy_communication;
 use core_dump::proto::CpRobot;
 use crate::{TEENSY_SEND_MSG_SIZE, config};
 use std::sync::Arc;
-use tokio::sync::{Mutex, Notify};
+use tokio::sync::{RwLock, Notify};
 
 pub mod receive_cp;
 pub mod receive_onboard_vision;
@@ -12,7 +12,7 @@ pub mod send_cp;
 pub mod teensy_communication;
 
 /// Raw Stream from the OnBoard Jetson Vision
-#[derive(Default)]
+#[derive(Default, Clone)]
 pub struct VisionMsg {
   pub x: f32,
   pub y: f32,
@@ -22,7 +22,7 @@ pub struct VisionMsg {
 // Teensy data
 /// Raw HID Msg from the Teensy
 #[repr(C)]
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone)]
 pub struct TeensyRecMSG {
   // Bitflags:
   // Bit 0: Error
@@ -152,25 +152,25 @@ struct TeensyLastState {
 
 /// Outbound Teensy handle (RobotCode -> Teensy).
 ///
-/// This is intentionally implemented as an `Arc<Mutex<...>>` holding only the *latest* message.
+/// This is intentionally implemented as an `Arc<RwLock<...>>` holding only the *latest* message.
 /// If producers publish faster than a client can send, the client will skip intermediate updates
 /// and only transmit the newest snapshot.
 #[derive(Clone, Default)]
 pub struct TeensyOut {
-  state: Arc<Mutex<TeensyLastState>>,
+  state: Arc<RwLock<TeensyLastState>>,
   notify: Arc<Notify>,
 }
 impl TeensyOut {
   pub fn new() -> Self {
     Self {
-      state: Arc::new(Mutex::new(TeensyLastState::default())),
+      state: Arc::new(RwLock::new(TeensyLastState::default())),
       notify: Arc::new(Notify::new()),
     }
   }
 
   /// Publish a new binary payload.
   pub async fn publish(&self, payload: [u8; TEENSY_SEND_MSG_SIZE]) {
-    let mut lock = self.state.lock().await;
+    let mut lock = self.state.write().await;
     lock.seq = lock.seq.wrapping_add(1);
     lock.payload = Some(payload);
     drop(lock);
@@ -179,7 +179,7 @@ impl TeensyOut {
 
   /// Return the latest payload if it is newer than `last_seq`, otherwise `None`.
   pub async fn try_latest_after(&self, last_seq: u64) -> Option<(u64, [u8; TEENSY_SEND_MSG_SIZE])> {
-    let lock = self.state.lock().await;
+    let lock = self.state.read().await;
 
     if lock.seq != last_seq {
       lock.payload.map(|payload| (lock.seq, payload))
@@ -189,7 +189,7 @@ impl TeensyOut {
   }
 }
 
-#[derive(Default)]
+#[derive(Default, Clone)]
 pub struct Events {
   pub cp: Option<CpRobot>,
   pub vis: Option<VisionMsg>,
@@ -203,7 +203,7 @@ impl Events {
     self.teensy = None;
   }
 
-  pub fn take(&mut self) -> Self {
+  pub fn take(mut self) -> Self {
     Self {
       cp: self.cp.take(),
       vis: self.vis.take(),
@@ -212,7 +212,7 @@ impl Events {
   }
 }
 
-pub type EventShare = Arc<Mutex<Events>>;
+pub type EventShare = Arc<RwLock<Events>>;
 
 pub struct CommunicationHandles {
   pub events: EventShare,
@@ -220,7 +220,7 @@ pub struct CommunicationHandles {
 }
 
 pub async fn communication_receiver(cfg: &config::Config) -> anyhow::Result<CommunicationHandles> {
-  let events = Arc::new(Mutex::new(Events::default()));
+  let events = Arc::new(RwLock::new(Events::default()));
   let teensy = TeensyOut::new();
 
   receive_cp(cfg, events.clone()).await;

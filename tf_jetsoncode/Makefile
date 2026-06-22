@@ -4,15 +4,15 @@ cross-build-release:
 	/home/eb/.cargo/bin/cross build --target aarch64-unknown-linux-gnu --release
 
 upload-debug: cross-build-debug
-	ssh robotik@10.0.64.104 "bash /home/robotik/tf_jetsoncode/kill.sh" && scp target/aarch64-unknown-linux-gnu/debug/tf_jetsoncode robotik@10.0.64.104:/home/robotik/Documents/teamfaabs-ssl-robot-code/tf_jetsoncode
+	ssh robotik@10.0.64.100 "bash /home/robotik/tf_jetsoncode/kill.sh" && scp target/aarch64-unknown-linux-gnu/debug/tf_jetsoncode robotik@10.0.64.100:/home/robotik/Documents/teamfaabs-ssl-robot-code/tf_jetsoncode
 
 upload-release: cross-build-release
-	ssh robotik@10.0.64.104 "pkill tf_jetsoncode || true" && scp target/aarch64-unknown-linux-gnu/release/tf_jetsoncode robotik@10.0.64.104:/home/robotik/tf_jetsoncode
+	ssh robotik@10.0.64.100 "pkill tf_jetsoncode || true" && scp target/aarch64-unknown-linux-gnu/release/tf_jetsoncode robotik@10.0.64.100:/home/robotik/tf_jetsoncode
 
 
 run-debug: upload-debug
-	ssh robotik@10.0.64.104 "cd /home/robotik/tf_jetsoncode/tf_jetsoncode && ./tf_jetsoncode"
+	ssh robotik@10.0.64.100 "cd /home/robotik/tf_jetsoncode/tf_jetsoncode && ./tf_jetsoncode"
 
 run-release: upload-release
-	ssh robotik@10.0.64.104 "cd /home/robotik/tf_jetsoncode && ./tf_jetsoncode"
-	#ssh robotik@10.0.64.104 "sudo systemctl restart tf_jetsoncode.service"
+	ssh robotik@10.0.64.100 "cd /home/robotik/tf_jetsoncode && ./tf_jetsoncode"
+	#ssh robotik@10.0.64.100 "sudo systemctl restart tf_jetsoncode.service"

@@ -23,7 +23,7 @@ pub async fn receive_onboard_vision(cfg: &config::Config, tx: EventShare) {
               size: f32::from_be_bytes(buf[8..12].try_into().unwrap_or([0; 4])),
             };
 
-            let mut lock = tx.lock().await;
+            let mut lock = tx.write().await;
 
             lock.vis = Some(msg);
           }

@@ -11,7 +11,7 @@ use crate::utils::{CommunicationChannels, PacketBuffer};
 pub use core_dump::proto::{
   CpBall, CpCommand, CpRobot, CpState, CpTrackedRobot, CpVector2, RobotCp,
 };
-use std::time::{Duration, Instant};
+use std::time::Duration;
 use tracing::info;
 
 mod communication;
@@ -70,9 +70,9 @@ impl Robot {
   pub async fn recv(&mut self) {
     // Drain the latest state from each channel
     let events = {
-      let mut lock = self.comm.rx.lock().await;
+      let lock = self.comm.rx.read().await;
 
-      lock.take()
+      lock.clone().take()
     };
 
     self.interpret(events);

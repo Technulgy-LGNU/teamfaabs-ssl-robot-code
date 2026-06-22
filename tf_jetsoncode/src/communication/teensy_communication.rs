@@ -72,7 +72,7 @@ pub async fn teensy_communication(cfg: &config::Config, tx: EventShare, rx: Teen
                 current: u16::from_le_bytes([buf[5], buf[6]]),
               };
 
-              let mut lock = tx.lock().await;
+              let mut lock = tx.write().await;
               lock.teensy = Some(msg);
             }
             Ok(_) => {
