@@ -5,7 +5,7 @@
 //!   simple and deterministic.
 //! - The actual ORCA math is represented by a placeholder `orca_step()` implementation.
 //!
-//! ## Intended data flow (120 Hz main loop)
+//! ## Intended data flow (500 Hz main loop)
 //! 1. Main loop receives latest packets (`CpRobot`, Teensy IMU, onboard vision, ...).
 //! 2. Main loop builds a `WorldSnapshot` + `NavIntent`.
 //! 3. Main loop calls `orca.publish(...)` (latest-only).
@@ -14,7 +14,7 @@
 //!
 //! ## Why a worker task?
 //! ORCA can be CPU heavy. Putting it behind a worker:
-//! - prevents your 120 Hz loop from stalling
+//! - prevents your 500 Hz loop from stalling
 //! - gives you one place to cache / pre-allocate ORCA state later (agent list, KD-tree, etc.)
 //! - lets you `spawn_blocking` if you want to isolate CPU usage
 
@@ -339,13 +339,19 @@ pub struct OrcaParams {
   pub run_blocking: bool,
 }
 
+impl OrcaParams {
+  fn clamped_responsibility(self) -> f32 {
+    self.responsibility.clamp(0.0, 1.0)
+  }
+}
+
 impl Default for OrcaParams {
   fn default() -> Self {
     Self {
       time_horizon_ms: 2000,
       safety_margin_mm: 60,
       default_robot_radius_mm: 90,
-      time_step_ms: 8,
+      time_step_ms: 2,
       responsibility: 0.5,
       max_accel_mm_s2: 2_800,
       max_decel_mm_s2: 3_800,
@@ -363,7 +369,7 @@ pub struct OrcaRequest {
 /// Handle to the ORCA worker.
 ///
 /// Design goal: provide *latest-only* semantics.
-/// - If you publish 120Hz updates, but ORCA computes at 60Hz, you don't want a backlog.
+/// - If you publish 500 Hz updates, but ORCA computes slower, you don't want a backlog.
 /// - `watch` channels always keep only the newest value.
 #[derive(Clone)]
 pub struct OrcaHandle {
@@ -404,7 +410,7 @@ impl OrcaHandle {
         // `spawn_blocking` requires a `'static` closure, so capture by value.
         let params = params;
         let compute = move || {
-          let (preferred, max_speed) = preferred_velocity(&req.world, req.intent);
+          let (preferred, max_speed) = preferred_velocity(&params, &req.world, req.intent);
           let raw_vel = orca_step(&params, &req.world, preferred, max_speed);
           let limited = limit_velocity_change(
             last_command_vel,
@@ -475,14 +481,17 @@ impl OrcaHandle {
   }
 }
 
-fn preferred_velocity(world: &WorldSnapshot, intent: NavIntent) -> (Vec2i, u32) {
+fn preferred_velocity(
+  params: &OrcaParams, world: &WorldSnapshot, intent: NavIntent,
+) -> (Vec2i, u32) {
   match intent {
     NavIntent::Stop => (Vec2i::default(), 0),
     NavIntent::GoToPosition {
       target_pos_mm,
       max_speed_mm_s,
     } => {
-      let to_target = (target_pos_mm - world.self_pos_mm) * 2;
+      let target = reachable_target(params, world, Vec2f::new_from_vec2i(target_pos_mm));
+      let to_target = (Vec2i::from(target) - world.self_pos_mm) * 2;
       // Simple P-controller: "direction towards target" with capped magnitude.
       // Later you can add slowing down near target, orientation constraints, etc.
       (to_target.with_speed_clamped(max_speed_mm_s), max_speed_mm_s)
@@ -542,6 +551,12 @@ fn orca_step(
 /// few centimeters from the actual line instead of the much larger robot-vs-robot safety margin.
 const PENALTY_KEEPOUT_MARGIN_MM: f32 = 20.0;
 
+/// Extra gap used when the requested target itself lies inside a static keep-out zone.
+///
+/// Without this projection the preferred velocity keeps pointing through the forbidden goal or
+/// penalty area, so the static avoidance layer can end up sliding around the boundary forever.
+const TARGET_KEEPOUT_MARGIN_MM: f32 = 25.0;
+
 /// Fraction of the robot's max deceleration used to plan static-zone braking. Staying below the
 /// rate limiter's actual capability leaves it headroom to correct discrete-step overshoot, so the
 /// robot reliably stops *before* the boundary instead of nicking it.
@@ -585,6 +600,27 @@ fn apply_static_avoidance(
   vel
 }
 
+fn reachable_target(params: &OrcaParams, world: &WorldSnapshot, mut target: Vec2f) -> Vec2f {
+  let field_clearance = params.default_robot_radius_mm as f32 + params.safety_margin_mm as f32;
+  let safe_rect = world.field.safe_play_rect(field_clearance);
+  target = safe_rect.clamp_point_inside(target);
+
+  let keepout_clearance =
+    params.default_robot_radius_mm as f32 + PENALTY_KEEPOUT_MARGIN_MM + TARGET_KEEPOUT_MARGIN_MM;
+  if !world.allow_own_penalty_area {
+    target = world
+      .field
+      .own_penalty_rect(keepout_clearance)
+      .project_penalty_target_to_field_side(target);
+  }
+  target = world
+    .field
+    .opponent_penalty_rect(keepout_clearance)
+    .project_penalty_target_to_field_side(target);
+
+  safe_rect.clamp_point_inside(target)
+}
+
 /// Maximum speed from which the robot can still brake to a stop within `distance_mm`.
 fn braking_speed(distance_mm: f32, decel_mm_s2: f32) -> f32 {
   if distance_mm <= 0.0 {
@@ -625,6 +661,29 @@ fn limit_velocity_change(
 }
 
 impl Rect {
+  fn clamp_point_inside(self, p: Vec2f) -> Vec2f {
+    Vec2f::new(
+      p.x.clamp(self.min_x_mm, self.max_x_mm),
+      p.y.clamp(self.min_y_mm, self.max_y_mm),
+    )
+  }
+
+  fn project_penalty_target_to_field_side(self, p: Vec2f) -> Vec2f {
+    if !self.contains(p) {
+      return p;
+    }
+
+    const EPS_MM: f32 = 1.0;
+    let rect_center_x = (self.min_x_mm + self.max_x_mm) * 0.5;
+    let x = if rect_center_x < 0.0 {
+      self.max_x_mm + EPS_MM
+    } else {
+      self.min_x_mm - EPS_MM
+    };
+
+    Vec2f::new(x, p.y.clamp(self.min_y_mm, self.max_y_mm))
+  }
+
   /// Keep the robot inside this rectangle. Each axis runs at full speed until it is within braking
   /// distance of the wall, then decelerates to a stop exactly at the wall — so the robot stays fast
   /// near field edges instead of crawling.
@@ -771,7 +830,7 @@ fn create_orca_lines(
 ) -> Vec<Line> {
   let mut lines = Vec::with_capacity(world.others.len() + usize::from(world.ball.is_some()));
   for other in &world.others {
-    lines.push(moving_obstacle_line(
+    if let Some(line) = moving_obstacle_line(
       params,
       self_pos,
       self_vel,
@@ -780,11 +839,13 @@ fn create_orca_lines(
       other.radius_mm as f32,
       time_horizon_s,
       time_step_s,
-    ));
+    ) {
+      lines.push(line);
+    }
   }
 
   if let Some(ball) = world.ball {
-    lines.push(moving_obstacle_line(
+    if let Some(line) = moving_obstacle_line(
       params,
       self_pos,
       self_vel,
@@ -793,7 +854,9 @@ fn create_orca_lines(
       ball.radius_mm as f32,
       time_horizon_s,
       time_step_s,
-    ));
+    ) {
+      lines.push(line);
+    }
   }
 
   lines
@@ -802,9 +865,10 @@ fn create_orca_lines(
 fn moving_obstacle_line(
   params: &OrcaParams, self_pos: Vec2f, self_vel: Vec2f, obstacle_pos: Vec2f, obstacle_vel: Vec2f,
   obstacle_radius: f32, time_horizon_s: f32, time_step_s: f32,
-) -> Line {
+) -> Option<Line> {
   let inv_time_horizon = 1.0 / time_horizon_s;
   let inv_time_step = 1.0 / time_step_s;
+  let responsibility = params.clamped_responsibility();
   let self_radius = params.default_robot_radius_mm as f32;
   let combined_radius = self_radius + obstacle_radius + params.safety_margin_mm as f32;
 
@@ -826,11 +890,7 @@ fn moving_obstacle_line(
 
     if dot_1 < 0.0 && dot_1 * dot_1 > combined_radius_sq * w_length_sq {
       let w_len = w_length_sq.sqrt();
-      let unit_w = if w_len < 1e-12 {
-        Vec2f::default()
-      } else {
-        w / w_len
-      };
+      let unit_w = normalized_or(w, -relative_position, Vec2f::new(1.0, 0.0));
       line.direction = Vec2f::new(unit_w.y, -unit_w.x);
       u = unit_w * (combined_radius * inv_time_horizon - w_len);
     } else {
@@ -850,21 +910,40 @@ fn moving_obstacle_line(
       u = line.direction * dot_2 - relative_velocity;
     }
 
-    line.point = self_vel + u * params.responsibility;
+    line.point = self_vel + u * responsibility;
   } else {
     let w = relative_velocity - relative_position * inv_time_step;
     let w_len = w.norm();
-    let unit_w = if w_len < 1e-12 {
-      Vec2f::default()
-    } else {
-      w / w_len
-    };
+    let unit_w = normalized_or(w, -relative_position, Vec2f::new(1.0, 0.0));
     line.direction = Vec2f::new(unit_w.y, -unit_w.x);
     u = unit_w * (combined_radius * inv_time_step - w_len);
-    line.point = self_vel + u * params.responsibility;
+    line.point = self_vel + u * responsibility;
   }
 
-  line
+  if line.direction.norm_squared() <= 1e-12
+    || !line.point.x.is_finite()
+    || !line.point.y.is_finite()
+    || !line.direction.x.is_finite()
+    || !line.direction.y.is_finite()
+  {
+    None
+  } else {
+    Some(line)
+  }
+}
+
+fn normalized_or(primary: Vec2f, secondary: Vec2f, fallback: Vec2f) -> Vec2f {
+  let primary_norm = primary.norm();
+  if primary_norm > 1e-6 {
+    return primary / primary_norm;
+  }
+
+  let secondary_norm = secondary.norm();
+  if secondary_norm > 1e-6 {
+    return secondary / secondary_norm;
+  }
+
+  fallback.normalized()
 }
 
 /// Solve:
@@ -981,19 +1060,21 @@ fn linear_program_3(
       for j in num_obst_lines..i {
         let line_j = &lines[j];
         let determinant = line_i.direction.det(line_j.direction);
-        let mut point: Vec2f = Vec2f::default();
-        if determinant.abs() <= 1e-12 {
+        let point = if determinant.abs() <= 1e-12 {
           // Parallel lines: if they point the same way, skip; else take midpoint.
           if line_i.direction.dot(line_j.direction) > 0.0 {
             continue;
           }
-          let _ = (line_i.point + line_j.point) * 0.5;
+          (line_i.point + line_j.point) * 0.5
         } else {
           let t = line_j.direction.det(line_i.point - line_j.point) / determinant;
-          point = line_i.point + line_i.direction * t;
-        }
+          line_i.point + line_i.direction * t
+        };
 
         let direction = (line_j.direction - line_i.direction).normalized();
+        if direction.norm_squared() <= 1e-12 {
+          continue;
+        }
         proj_lines.push(Line { point, direction });
       }
 
@@ -1231,6 +1312,55 @@ mod tests {
   }
 
   #[test]
+  fn illegal_goal_target_is_projected_to_field_side() {
+    let params = OrcaParams {
+      run_blocking: false,
+      ..Default::default()
+    };
+    let world = base_world(Vec2i::new(-2_000, 0));
+    let illegal_goal_target = Vec2f::new(-4_500.0, 0.0);
+
+    let target = reachable_target(&params, &world, illegal_goal_target);
+    let actual_penalty = test_field().opponent_penalty_rect(0.0);
+
+    assert!(
+      !actual_penalty.contains(target),
+      "projected target must stay out of the goal/penalty area: {target:?}"
+    );
+    assert!(
+      target.x > actual_penalty.max_x_mm,
+      "target should be placed on the reachable field-side face: {target:?}"
+    );
+    assert!(
+      target.y.abs() < 1.0,
+      "target should not invent a lateral detour"
+    );
+  }
+
+  #[test]
+  fn closed_loop_does_not_orbit_when_goal_target_is_illegal() {
+    let path = run_closed_loop(
+      base_world(Vec2i::new(-2_000, 0)),
+      Vec2i::new(-4_500, 0),
+      2_000,
+      2_800,
+    );
+    let actual_penalty = test_field().opponent_penalty_rect(0.0);
+    for p in &path {
+      assert!(
+        !actual_penalty.contains(*p),
+        "robot center crossed into the goal/penalty area at {p:?}"
+      );
+    }
+
+    let last = *path.last().unwrap();
+    assert!(
+      last.x > actual_penalty.max_x_mm && last.y.abs() < 250.0,
+      "robot should settle on the legal field-side target, last={last:?}"
+    );
+  }
+
+  #[test]
   fn drives_around_box_to_the_far_side() {
     // Target sits on the opposite side of the box; the straight line passes through it, so the
     // robot must detour around and still arrive.
@@ -1238,7 +1368,7 @@ mod tests {
       base_world(Vec2i::new(-4_000, -1_300)),
       Vec2i::new(-4_000, 1_300),
       3_000,
-      800,
+      3_200,
     );
     let line = test_field().opponent_penalty_rect(0.0);
     for p in &path {
@@ -1299,6 +1429,68 @@ mod tests {
     };
     let out = orca_step(&params, &world, Vec2i::new(1_000, 0), 1_000);
     assert!(out.x <= 1_000);
+  }
+
+  #[test]
+  fn responsibility_above_one_is_clamped() {
+    let high = OrcaParams {
+      responsibility: 2.0,
+      run_blocking: false,
+      ..Default::default()
+    };
+    let one = OrcaParams {
+      responsibility: 1.0,
+      run_blocking: false,
+      ..Default::default()
+    };
+
+    let high_line = moving_obstacle_line(
+      &high,
+      Vec2f::new(0.0, 0.0),
+      Vec2f::new(1_000.0, 0.0),
+      Vec2f::new(600.0, 0.0),
+      Vec2f::default(),
+      90.0,
+      1.0,
+      0.002,
+    )
+    .unwrap();
+    let one_line = moving_obstacle_line(
+      &one,
+      Vec2f::new(0.0, 0.0),
+      Vec2f::new(1_000.0, 0.0),
+      Vec2f::new(600.0, 0.0),
+      Vec2f::default(),
+      90.0,
+      1.0,
+      0.002,
+    )
+    .unwrap();
+
+    assert!((high_line.point.x - one_line.point.x).abs() < 1e-3);
+    assert!((high_line.point.y - one_line.point.y).abs() < 1e-3);
+  }
+
+  #[test]
+  fn overlapping_stationary_obstacle_still_creates_valid_line() {
+    let params = OrcaParams {
+      run_blocking: false,
+      ..Default::default()
+    };
+    let line = moving_obstacle_line(
+      &params,
+      Vec2f::new(0.0, 0.0),
+      Vec2f::default(),
+      Vec2f::new(0.0, 0.0),
+      Vec2f::default(),
+      90.0,
+      1.0,
+      0.002,
+    )
+    .unwrap();
+
+    assert!(line.direction.norm_squared() > 0.99);
+    assert!(line.point.x.is_finite() && line.point.y.is_finite());
   }
 
   #[test]

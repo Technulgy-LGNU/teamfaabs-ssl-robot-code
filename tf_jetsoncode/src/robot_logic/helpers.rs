@@ -1,8 +1,8 @@
-use core_dump::proto;
 use crate::communication::TeensySendMsg;
-use core_dump::proto::{CpInfos, CpState, CpTask, CpTrackedRobot};
 pub(crate) use crate::robot_logic::vec::Vec2f;
 pub(crate) use crate::robot_logic::{RAW_MAX_SPEED_MM_S, RAW_STOP_RADIUS_MM};
+use core_dump::proto;
+use core_dump::proto::{CpInfos, CpState, CpTask, CpTrackedRobot};
 
 #[inline]
 pub(crate) fn own_goal_x(infos: &CpInfos) -> f32 {
@@ -32,11 +32,11 @@ pub(crate) fn inside_own_penalty_area(infos: &CpInfos, pos: Vec2f) -> bool {
   pos.x >= x_min && pos.x <= x_max && pos.y >= -y_half && pos.y <= y_half
 }
 
-pub(crate) fn inside_field(infos: &CpInfos, pos: Vec2f) -> bool {
+pub(crate) fn outside_field(infos: &CpInfos, pos: Vec2f) -> bool {
   let x_half = infos.width as f32 * 0.5 + infos.runoff_width as f32;
   let y_half = infos.height as f32 * 0.5 + infos.runoff_width as f32;
 
-  -pos.x >= x_half && pos.x <= x_half && pos.y >= -y_half && pos.y <= y_half
+  pos.x < -x_half || pos.x > x_half || pos.y < -y_half || pos.y > y_half
 }
 
 #[inline]
@@ -130,4 +130,31 @@ pub fn point_at_distance_from_a(a: Vec2f, b: Vec2f, distance: f32) -> Option<Vec
     x: a.x + dx / length * distance,
     y: a.y + dy / length * distance,
   })
+}
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  fn infos() -> CpInfos {
+    CpInfos {
+      width: 9000,
+      height: 6000,
+      runoff_width: 300,
+      ..Default::default()
+    }
+  }
+
+  #[test]
+  fn outside_field_checks_all_edges() {
+    let infos = infos();
+
+    assert!(!outside_field(&infos, Vec2f::new(0.0, 0.0)));
+    assert!(!outside_field(&infos, Vec2f::new(-4_800.0, 0.0)));
+    assert!(!outside_field(&infos, Vec2f::new(4_800.0, 0.0)));
+    assert!(outside_field(&infos, Vec2f::new(-4_801.0, 0.0)));
+    assert!(outside_field(&infos, Vec2f::new(4_801.0, 0.0)));
+    assert!(outside_field(&infos, Vec2f::new(0.0, -3_301.0)));
+    assert!(outside_field(&infos, Vec2f::new(0.0, 3_301.0)));
+  }
 }

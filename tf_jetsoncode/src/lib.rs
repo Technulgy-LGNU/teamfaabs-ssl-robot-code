@@ -2,7 +2,9 @@ use crate::communication::communication_receiver;
 use crate::communication::send_cp::send_cp;
 pub use crate::communication::{Events, TeensyRecMSG, TeensySendMsg, send_flags};
 pub use crate::config::Config;
-use crate::robot_logic::helpers::{allow_own_penalty_area, ball_avoidance_margin_mm, inside_field};
+use crate::robot_logic::helpers::{
+  allow_own_penalty_area, ball_avoidance_margin_mm, outside_field,
+};
 use crate::robot_logic::orca::{
   NavIntent, OrcaHandle, OrcaParams, OrcaRequest, WorldSnapshot, nav_command_to_teensy,
 };
@@ -79,7 +81,7 @@ impl Robot {
   }
 
   pub async fn run(&mut self) {
-    let mut tick = tokio::time::interval(Duration::from_millis(4)); // 500 Hz
+    let mut tick = tokio::time::interval(Duration::from_millis(2)); // 500 Hz
     tick.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
 
     loop {
@@ -118,8 +120,8 @@ impl<C> Robot<C> {
       time_horizon_ms: 1000,
       safety_margin_mm: 30,
       default_robot_radius_mm: 90,
-      time_step_ms: 1,
-      responsibility: 2.0,
+      time_step_ms: 2,
+      responsibility: 0.8,
       max_accel_mm_s2: DEFAULT_ACCEL_MM_S2,
       max_decel_mm_s2: DEFAULT_DECEL_MM_S2,
       run_blocking: true,
@@ -288,7 +290,7 @@ impl<C> Robot<C> {
     self.packets.robot_msg.vel_y = self.packets.robot_self.vel.unwrap_or_default().y as i16;
 
     // Do last check, if robot is out of field, if yes, stop && checks if the robot is visibly in the vision
-    if inside_field(
+    if outside_field(
       &self.packets.cp_data.infos,
       Vec2f::new_from_cp(self.packets.robot_self.pos),
     ) || self.packets.robot_self.visibility <= 20
