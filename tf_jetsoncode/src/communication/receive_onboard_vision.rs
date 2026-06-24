@@ -1,16 +1,15 @@
 use crate::communication::{EventShare, VisionMsg};
-use crate::config;
 
-pub async fn receive_onboard_vision(cfg: &config::Config, tx: EventShare) {
-  let ov_stream = match tokio::net::UnixStream::connect(&cfg.onboard_vision_socket_path).await {
-    Ok(s) => s,
-    Err(e) => {
-      eprintln!("Failed to connect to onboard vision socket: {}", e);
-      return;
-    }
-  };
-
+pub fn receive_onboard_vision(path: String, tx: EventShare) {
   tokio::task::spawn(async move {
+    let ov_stream = match tokio::net::UnixStream::connect(path).await {
+      Ok(s) => s,
+      Err(e) => {
+        eprintln!("Failed to connect to onboard vision socket: {}", e);
+        return;
+      }
+    };
+
     let mut buf = [0u8; 1024];
 
     loop {

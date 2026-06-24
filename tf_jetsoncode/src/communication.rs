@@ -219,15 +219,15 @@ pub struct CommunicationHandles {
   pub teensy: TeensyOut,
 }
 
-pub async fn communication_receiver(cfg: &config::Config) -> anyhow::Result<CommunicationHandles> {
+pub fn communication_receiver(cfg: &config::Config) -> anyhow::Result<CommunicationHandles> {
   let events = Arc::new(RwLock::new(Events::default()));
   let teensy = TeensyOut::new();
 
-  receive_cp(cfg, events.clone()).await;
+  receive_cp(format!("0.0.0.0:{}", cfg.cp_config.port.clone()).to_string(), events.clone());
 
-  receive_onboard_vision(cfg, events.clone()).await;
+  receive_onboard_vision(cfg.onboard_vision_socket_path.clone(), events.clone());
 
-  teensy_communication(cfg, events.clone(), teensy.clone()).await;
+  teensy_communication(cfg, events.clone(), teensy.clone());
 
   Ok(CommunicationHandles { events, teensy })
 }

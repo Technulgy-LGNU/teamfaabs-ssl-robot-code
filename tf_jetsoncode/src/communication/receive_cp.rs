@@ -1,22 +1,17 @@
 use crate::communication::EventShare;
-use crate::config;
 use core_dump::proto::CpRobot;
 use prost::Message;
 
-pub async fn receive_cp(cfg: &config::Config, tx: EventShare) {
-  let cp_socket: tokio::net::UdpSocket =
-    match tokio::net::UdpSocket::bind(format!("0.0.0.0:{}", cfg.cp_config.port)).await {
+pub fn receive_cp(addr: String, tx: EventShare) {
+  tokio::spawn(async move {
+    let cp_socket: tokio::net::UdpSocket = match tokio::net::UdpSocket::bind(addr).await {
       Ok(s) => s,
       Err(e) => {
-        eprintln!(
-          "Failed to bind UDP socket for CP with port {}: {}",
-          cfg.cp_config.port, e
-        );
+        eprintln!("Failed to bind UDP socket for CP: {}", e);
         return;
       }
     };
 
-  tokio::spawn(async move {
     let mut buf = [0u8; 65536];
 
     loop {

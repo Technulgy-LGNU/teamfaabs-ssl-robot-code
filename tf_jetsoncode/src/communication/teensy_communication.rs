@@ -7,7 +7,7 @@ use tracing::error;
 /// Robust Teensy communication task that will try to reconnect when the device
 /// disappears (for example during firmware upload). Uses exponential backoff
 /// (starting at 100ms, doubling up to 5000ms).
-pub async fn teensy_communication(cfg: &config::Config, tx: EventShare, rx: TeensyOut) {
+pub fn teensy_communication(cfg: &config::Config, tx: EventShare, rx: TeensyOut) {
   // Extract VID/PID before spawning (they're all we need from config).
   let vid = cfg.teensy.vid;
   let pid = cfg.teensy.pid;

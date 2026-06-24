@@ -43,7 +43,7 @@ impl Robot {
     };
 
     // Get communication channels
-    let communication = match communication_receiver(&config).await {
+    let communication = match communication_receiver(&config) {
       Ok(communication) => communication,
       Err(e) => panic!("{}", e),
     };
