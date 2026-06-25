@@ -48,7 +48,7 @@ $(error Missing host for robot(s) "$(MISSING_ROBOT_HOSTS)"; define ROBOT_<id>_HO
 endif
 endif
 
-.PHONY: help list-robots cross-build-debug cross-build-release upload-debug upload-release run-debug run-release
+.PHONY: help list-robots cross-build-debug cross-build-release upload-debug upload-release run-debug run-release run-deploy-release
 
 help:
 	@echo "Usage:"
@@ -56,6 +56,7 @@ help:
 	@echo "  make upload-release ROBOT=all"
 	@echo "  make run-debug ROBOT=2"
 	@echo "  make run-release ROBOT=2"
+	@echo "  make run-deploy-release ROBOT=all"
 	@echo ""
 	@echo "Configured robots:"
 	@$(MAKE) --no-print-directory list-robots

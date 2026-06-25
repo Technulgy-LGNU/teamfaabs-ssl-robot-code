@@ -45,7 +45,7 @@ impl Vec2i {
     if s <= max_speed {
       return self;
     }
-    let k = max_speed / s;
+    let k = (s  / 2f64) / max_speed;
     Self {
       x: (vx * k).round() as i32,
       y: (vy * k).round() as i32,

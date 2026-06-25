@@ -1,10 +1,10 @@
 use crate::communication::receive_cp::receive_cp;
 use crate::communication::receive_onboard_vision::receive_onboard_vision;
 use crate::communication::teensy_communication::teensy_communication;
-use core_dump::proto::CpRobot;
 use crate::{TEENSY_SEND_MSG_SIZE, config};
+use core_dump::proto::CpRobot;
 use std::sync::Arc;
-use tokio::sync::{RwLock, Notify};
+use tokio::sync::{Notify, RwLock};
 
 pub mod receive_cp;
 pub mod receive_onboard_vision;
@@ -223,7 +223,10 @@ pub fn communication_receiver(cfg: &config::Config) -> anyhow::Result<Communicat
   let events = Arc::new(RwLock::new(Events::default()));
   let teensy = TeensyOut::new();
 
-  receive_cp(format!("0.0.0.0:{}", cfg.cp_config.port.clone()).to_string(), events.clone());
+  receive_cp(
+    format!("0.0.0.0:{}", cfg.cp_config.port.clone()).to_string(),
+    events.clone(),
+  );
 
   receive_onboard_vision(cfg.onboard_vision_socket_path.clone(), events.clone());
 

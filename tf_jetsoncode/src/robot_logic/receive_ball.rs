@@ -21,7 +21,7 @@ impl<C> Robot<C> {
 
     raw_move_towards(&mut self.packets.robot_msg, robot_pos, interception_point);
 
-    if distance_vec2f(robot_pos, ball_pos) <= 100f32 {
+    if distance_vec2f(robot_pos, ball_pos) <= 50f32 {
       self.packets.robot_msg.speed = 0;
     }
   }

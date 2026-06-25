@@ -45,7 +45,7 @@ impl<C> Robot<C> {
         if distance_cpv(
           self.packets.robot_self.pos,
           self.packets.cp_data.cmd.pos.unwrap_or_default(),
-        ) < 10.0
+        ) < 60.0
         {
           let intent = NavIntent::Stop;
           let nav_command = self.orca.step(OrcaRequest {
@@ -108,14 +108,14 @@ impl<C> Robot<C> {
       }
       CpTask::TaskRecKick => {
         // Rec Kick
-        if ball_vel.norm() >= 200f32 {
+        if ball_vel.norm() >= 200f32 && !self.packets.teensy_data.has_ball() {
           self.receive_ball();
+
+          // Keep looking at the ball while moving.
+          self.packets.robot_msg.orient = (ball_pos - robot_pos).angle_to_u16();
         } else {
           self.packets.robot_msg.speed = 0;
         }
-
-        // Keep looking at the ball while moving.
-        self.packets.robot_msg.orient = (ball_pos - robot_pos).angle_to_u16();
 
         // Always enable dribbler
         self.packets.robot_msg.set_flag(send_flags::DRIBBLER);

@@ -117,7 +117,7 @@ impl<C: Default> Robot<C> {
 impl<C> Robot<C> {
   pub fn from_parts(config: Config, comm: C) -> Self {
     let params = OrcaParams {
-      time_horizon_ms: 1000,
+      time_horizon_ms: 200,
       safety_margin_mm: 30,
       default_robot_radius_mm: 90,
       time_step_ms: 2,
@@ -286,6 +286,10 @@ impl<C> Robot<C> {
     self.packets.robot_msg.state = self.packets.cp_data.cmd.state as u8;
     self.packets.robot_msg.vel_x = self.packets.robot_self.vel.unwrap_or_default().x as i16;
     self.packets.robot_msg.vel_y = self.packets.robot_self.vel.unwrap_or_default().y as i16;
+
+    self.packets.robot_msg.dir = self.packets.cp_data.cmd.kick_orient.unwrap_or_default() as u16;
+    self.packets.robot_msg.orient = self.packets.cp_data.cmd.orientation.unwrap_or_default() as u16;
+    self.packets.robot_msg.speed = self.packets.cp_data.cmd.speed.unwrap_or_default() as u16;
 
     // Do last check, if robot is out of field, if yes, stop && checks if the robot is visibly in the vision
     if outside_field(

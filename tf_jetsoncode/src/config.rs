@@ -47,7 +47,7 @@ impl Default for TeensyConfig {
   fn default() -> Self {
     Self {
       vid: 0x16C0,
-      pid: 0x0480,
+      pid: 0x0486,
     }
   }
 }
