@@ -287,10 +287,6 @@ impl<C> Robot<C> {
     self.packets.robot_msg.vel_x = self.packets.robot_self.vel.unwrap_or_default().x as i16;
     self.packets.robot_msg.vel_y = self.packets.robot_self.vel.unwrap_or_default().y as i16;
 
-    self.packets.robot_msg.dir = self.packets.cp_data.cmd.kick_orient.unwrap_or_default() as u16;
-    self.packets.robot_msg.orient = self.packets.cp_data.cmd.orientation.unwrap_or_default() as u16;
-    self.packets.robot_msg.speed = self.packets.cp_data.cmd.speed.unwrap_or_default() as u16;
-
     // Do last check, if robot is out of field, if yes, stop && checks if the robot is visibly in the vision
     if outside_field(
       &self.packets.cp_data.infos,
