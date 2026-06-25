@@ -1,11 +1,12 @@
 use crate::Robot;
-use core_dump::proto::CpInfos;
+use crate::communication::send_flags;
 use crate::robot_logic::RAW_MAX_SPEED_MM_S;
 use crate::robot_logic::helpers::{
   clamp_to_own_penalty, inside_own_penalty_area, own_goal_side, own_goal_x, raw_move_towards,
 };
 use crate::robot_logic::orca::{NavIntent, OrcaRequest, WorldSnapshot, nav_command_to_teensy};
 use crate::robot_logic::vec::{Vec2f, Vec2i, lerp};
+use core_dump::proto::CpInfos;
 
 // How far the goalie should stay in front of the goal line when guarding.
 const GOAL_LINE_MARGIN_MM: f32 = 120f32;
@@ -16,7 +17,9 @@ const INTERCEPT_LINE_MM: f32 = 220f32;
 // Prediction horizon used to detect a kick/shot that is likely to reach goal.
 const SHOT_LOOKAHEAD_S: f32 = 4f32;
 // Allowed vertical miss tolerance when deciding that a ball is heading at goal.
-const SHOT_Y_MARGIN_MM: f32 = 220f32;
+const SHOT_Y_MARGIN_MM: f32 = 450f32;
+// Only run the dribbler when the ball is close enough to be collected.
+const DRIBBLER_RANGE_MM: f32 = 150f32;
 // Keeps the goalie inside the goal opening instead of hugging the exact edge.
 const GUARD_Y_MARGIN_MM: f32 = 20f32;
 
@@ -34,6 +37,9 @@ impl<C> Robot<C> {
 
     // Always face the ball globally, independent of the movement direction.
     self.packets.robot_msg.orient = (ball_pos - self_pos).angle_to_u16();
+    if should_run_goalie_dribbler(self_pos, ball_pos, ball_vel) {
+      self.packets.robot_msg.set_flag(send_flags::DRIBBLER);
+    }
 
     // Choose a defensive target: either a predicted interception point or a guard point.
     let target = goalie_target(&self.packets.cp_data.infos, ball_pos, ball_vel);
@@ -52,15 +58,19 @@ impl<C> Robot<C> {
         max_speed_mm_s: RAW_MAX_SPEED_MM_S as u32,
       };
 
-      self.orca.publish(OrcaRequest {
+      let nav_command = self.orca.step(OrcaRequest {
         intent,
         world: world.clone(),
       });
-
-      nav_command_to_teensy(&mut self.packets.robot_msg, self.orca.latest());
+      nav_command_to_teensy(&mut self.packets.robot_msg, nav_command);
       self.packets.robot_msg.orient = (ball_pos - self_pos).angle_to_u16();
     }
   }
+}
+
+#[inline]
+fn should_run_goalie_dribbler(self_pos: Vec2f, ball_pos: Vec2f, ball_vel: Vec2f) -> bool {
+  (ball_pos - self_pos).norm() <= DRIBBLER_RANGE_MM && ball_vel.norm() > 100f32
 }
 
 #[inline]
@@ -69,7 +79,7 @@ fn goalie_target(infos: &CpInfos, ball_pos: Vec2f, ball_vel: Vec2f) -> Vec2f {
   let goal_x = own_goal_x(infos);
   let goal_side = own_goal_side(infos);
   // Half the goal opening, used to keep the goalie aligned with the ball.
-  let goal_half_width = infos.width as f32 * 0.5;
+  let goal_half_width = infos.goal_width as f32 * 0.5;
   // The inner edge of the penalty area on our side.
   let penalty_depth = infos.penalty_area_height as f32;
   let penalty_outer_x = goal_x - goal_side * penalty_depth;
@@ -109,6 +119,15 @@ pub(crate) fn predict_intercept(
     return None;
   }
 
+  let intercept_x = goal_x - goal_side * INTERCEPT_LINE_MM;
+
+  // Estimate where the ball reaches the line the goalie can actually block on.
+  let t_intercept = (intercept_x - ball_pos.x) / ball_vel.x;
+  if !(0f32..=SHOT_LOOKAHEAD_S).contains(&t_intercept) {
+    return None;
+  }
+  let intercept_y = ball_pos.y + ball_vel.y * t_intercept;
+
   // Estimate when the ball reaches the goal line in the current trajectory.
   let t_goal = (goal_x - ball_pos.x) / ball_vel.x;
   if !(0f32..=SHOT_LOOKAHEAD_S).contains(&t_goal) {
@@ -123,8 +142,5 @@ pub(crate) fn predict_intercept(
   }
 
   // Place the goalie slightly in front of the expected impact point.
-  Some(Vec2f::new(
-    goal_x - goal_side * INTERCEPT_LINE_MM,
-    predicted_y,
-  ))
+  Some(Vec2f::new(intercept_x, intercept_y))
 }

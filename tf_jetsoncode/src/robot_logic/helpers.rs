@@ -74,7 +74,7 @@ pub(crate) fn raw_move_towards(msg: &mut TeensySendMsg, self_pos: Vec2f, target:
 
 #[inline]
 pub(crate) fn raw_movement_accel(dist: f32) -> f32 {
-  (dist * 3.0).clamp(60.0, RAW_MAX_SPEED_MM_S)
+  (dist * 8.0).clamp(255.0, RAW_MAX_SPEED_MM_S)
 }
 
 pub(crate) fn ball_avoidance_margin_mm(
