@@ -6,7 +6,7 @@ use crate::robot_logic::helpers::{
   allow_own_penalty_area, ball_avoidance_margin_mm, outside_field,
 };
 use crate::robot_logic::orca::{
-  NavIntent, OrcaHandle, OrcaParams, OrcaRequest, WorldSnapshot, nav_command_to_teensy,
+  NavIntent, Orca, OrcaParams, OrcaRequest, WorldSnapshot, nav_command_to_teensy,
 };
 use crate::robot_logic::vec::Vec2f;
 use crate::utils::{CommunicationChannels, PacketBuffer};
@@ -30,7 +30,7 @@ const DEFAULT_DECEL_MM_S2: u32 = 6_000;
 pub struct Robot<C = CommunicationChannels> {
   config: Config,
   params: OrcaParams,
-  orca: OrcaHandle,
+  orca: Orca,
   was_goalie: bool,
   packets: PacketBuffer,
   comm: C,
@@ -124,10 +124,9 @@ impl<C> Robot<C> {
       responsibility: 0.8,
       max_accel_mm_s2: DEFAULT_ACCEL_MM_S2,
       max_decel_mm_s2: DEFAULT_DECEL_MM_S2,
-      run_blocking: true,
     };
 
-    let orca = OrcaHandle::spawn(params);
+    let orca = Orca::new(params);
 
     Self {
       config,
@@ -239,12 +238,11 @@ impl<C> Robot<C> {
       }
       CpState::StateHalt => {
         // Robot is not allowed to move
-        self.orca.publish(OrcaRequest {
+        let nav_command = self.orca.step(OrcaRequest {
           world,
           intent: NavIntent::Stop,
         });
-
-        nav_command_to_teensy(&mut self.packets.robot_msg, self.orca.latest());
+        nav_command_to_teensy(&mut self.packets.robot_msg, nav_command);
       }
       CpState::StateStop => {
         // Robot is allowed to move with a max speed of
@@ -273,11 +271,11 @@ impl<C> Robot<C> {
       CpState::StateSubstitute => {
         // Substitute
         // HALT
-        self.orca.publish(OrcaRequest {
+        let nav_command = self.orca.step(OrcaRequest {
           world,
           intent: NavIntent::Stop,
         });
-        nav_command_to_teensy(&mut self.packets.robot_msg, self.orca.latest());
+        nav_command_to_teensy(&mut self.packets.robot_msg, nav_command);
       }
     }
 

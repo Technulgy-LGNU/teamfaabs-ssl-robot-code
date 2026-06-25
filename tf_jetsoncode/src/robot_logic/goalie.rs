@@ -58,12 +58,11 @@ impl<C> Robot<C> {
         max_speed_mm_s: RAW_MAX_SPEED_MM_S as u32,
       };
 
-      self.orca.publish(OrcaRequest {
+      let nav_command = self.orca.step(OrcaRequest {
         intent,
         world: world.clone(),
       });
-
-      nav_command_to_teensy(&mut self.packets.robot_msg, self.orca.latest());
+      nav_command_to_teensy(&mut self.packets.robot_msg, nav_command);
       self.packets.robot_msg.orient = (ball_pos - self_pos).angle_to_u16();
     }
   }
