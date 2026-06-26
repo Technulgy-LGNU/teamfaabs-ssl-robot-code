@@ -3,7 +3,7 @@ SHELL := /usr/bin/env bash
 
 TARGET := aarch64-unknown-linux-gnu
 BINARY := tf_jetsoncode
-CROSS ?= /home/eb/.cargo/bin/cross
+CROSS ?= cross
 
 SSH_USER ?= robotik
 ROBOT ?= all

@@ -281,7 +281,6 @@ impl<C> Robot<C> {
 
     // Led's
     // Depending on different states, set the led's on the mainboard
-
     // After logic, send new robot command
     self.packets.robot_msg.state = self.packets.cp_data.cmd.state as u8;
     self.packets.robot_msg.vel_x = self.packets.robot_self.vel.unwrap_or_default().x as i16;
@@ -293,6 +292,7 @@ impl<C> Robot<C> {
       Vec2f::new_from_cp(self.packets.robot_self.pos),
     ) || self.packets.robot_self.visibility <= 20
     {
+      info!("Visibility: {:?}", self.packets.robot_self.visibility);
       self.packets.robot_msg.speed = 0;
     }
   }
