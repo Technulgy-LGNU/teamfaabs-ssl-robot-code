@@ -44,10 +44,7 @@ impl<C> Robot<C> {
       target_pos_mm: Vec2i::new(target.x as i32, target.y as i32),
       max_speed_mm_s: self.packets.cp_data.cmd.speed.unwrap_or_default(),
     };
-    let nav_command = self.orca.step(OrcaRequest {
-      intent,
-      world: world.clone(),
-    });
+    let nav_command = self.orca.step(OrcaRequest { intent, world });
     nav_command_to_teensy(&mut self.packets.robot_msg, nav_command);
   }
 
@@ -67,10 +64,7 @@ impl<C> Robot<C> {
       target_pos_mm: Vec2i::new(target.x as i32, target.y as i32),
       max_speed_mm_s: self.packets.cp_data.cmd.speed.unwrap_or_default(),
     };
-    let nav_command = self.orca.step(OrcaRequest {
-      intent,
-      world: world.clone(),
-    });
+    let nav_command = self.orca.step(OrcaRequest { intent, world });
     nav_command_to_teensy(&mut self.packets.robot_msg, nav_command);
   }
 }

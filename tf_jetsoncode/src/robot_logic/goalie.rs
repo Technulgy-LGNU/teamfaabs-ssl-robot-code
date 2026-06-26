@@ -58,10 +58,7 @@ impl<C> Robot<C> {
         max_speed_mm_s: RAW_MAX_SPEED_MM_S as u32,
       };
 
-      let nav_command = self.orca.step(OrcaRequest {
-        intent,
-        world: world.clone(),
-      });
+      let nav_command = self.orca.step(OrcaRequest { intent, world });
       nav_command_to_teensy(&mut self.packets.robot_msg, nav_command);
       self.packets.robot_msg.orient = (ball_pos - self_pos).angle_to_u16();
     }
@@ -70,7 +67,8 @@ impl<C> Robot<C> {
 
 #[inline]
 fn should_run_goalie_dribbler(self_pos: Vec2f, ball_pos: Vec2f, ball_vel: Vec2f) -> bool {
-  (ball_pos - self_pos).norm() <= DRIBBLER_RANGE_MM && ball_vel.norm() > 100f32
+  (ball_pos - self_pos).norm_squared() <= DRIBBLER_RANGE_MM * DRIBBLER_RANGE_MM
+    && ball_vel.norm_squared() > 100f32 * 100f32
 }
 
 #[inline]

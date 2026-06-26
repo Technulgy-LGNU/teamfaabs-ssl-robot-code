@@ -1,9 +1,9 @@
+use crate::Robot;
 use crate::communication::send_flags;
 use crate::robot_logic::orca::{
-  nav_command_to_teensy, NavIntent, OrcaRequest, Vec2i, WorldSnapshot,
+  NavIntent, OrcaRequest, Vec2i, WorldSnapshot, nav_command_to_teensy,
 };
-use crate::robot_logic::vec::{distance_cpv, Vec2f};
-use crate::Robot;
+use crate::robot_logic::vec::{Vec2f, distance_cpv_squared};
 use core_dump::proto::CpTask;
 
 mod defense;
@@ -44,16 +44,13 @@ impl<C> Robot<C> {
         };
 
         // Check if near of pos, and then stop
-        if distance_cpv(
+        if distance_cpv_squared(
           self.packets.robot_self.pos,
           self.packets.cp_data.cmd.pos.unwrap_or_default(),
-        ) < 60.0
+        ) < 60.0 * 60.0
         {
           let intent = NavIntent::Stop;
-          let nav_command = self.orca.step(OrcaRequest {
-            intent,
-            world: world.clone(),
-          });
+          let nav_command = self.orca.step(OrcaRequest { intent, world });
           nav_command_to_teensy(&mut self.packets.robot_msg, nav_command);
         } else {
           let nav_intent = NavIntent::GoToPosition {
@@ -62,7 +59,7 @@ impl<C> Robot<C> {
           };
           let nav_command = self.orca.step(OrcaRequest {
             intent: nav_intent,
-            world: world.clone(),
+            world,
           });
           nav_command_to_teensy(&mut self.packets.robot_msg, nav_command);
         }
@@ -143,10 +140,7 @@ impl<C> Robot<C> {
             target_pos_mm: Vec2i::new_from_cp(self.packets.cp_data.cmd.pos.unwrap_or_default()),
             max_speed_mm_s: self.packets.cp_data.cmd.speed.unwrap_or_default(),
           };
-          let nav_command = self.orca.step(OrcaRequest {
-            intent,
-            world: world.clone(),
-          });
+          let nav_command = self.orca.step(OrcaRequest { intent, world });
 
           // Enable Dribbler
           self.packets.robot_msg.set_flag(send_flags::DRIBBLER);
@@ -183,10 +177,7 @@ impl<C> Robot<C> {
             target_pos_mm: Vec2i::new_from_cp(self.packets.cp_data.cmd.pos.unwrap_or_default()),
             max_speed_mm_s: self.packets.cp_data.cmd.speed.unwrap_or_default(),
           };
-          let nav_command = self.orca.step(OrcaRequest {
-            intent,
-            world: world.clone(),
-          });
+          let nav_command = self.orca.step(OrcaRequest { intent, world });
 
           // Enable Dribbler
           self.packets.robot_msg.set_flag(send_flags::DRIBBLER);

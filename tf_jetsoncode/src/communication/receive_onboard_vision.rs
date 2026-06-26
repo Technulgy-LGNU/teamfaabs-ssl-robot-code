@@ -1,4 +1,5 @@
 use crate::communication::{EventShare, VisionMsg};
+use std::io::ErrorKind;
 
 pub fn receive_onboard_vision(path: String, tx: EventShare) {
   tokio::task::spawn(async move {
@@ -13,24 +14,38 @@ pub fn receive_onboard_vision(path: String, tx: EventShare) {
     let mut buf = [0u8; 1024];
 
     loop {
-      match ov_stream.try_read(&mut buf) {
-        Ok(size) => {
-          if size > 12 {
-            let msg = VisionMsg {
-              x: f32::from_le_bytes(buf[0..4].try_into().unwrap_or([0; 4])),
-              y: f32::from_le_bytes(buf[4..8].try_into().unwrap_or([0; 4])),
-              size: f32::from_be_bytes(buf[8..12].try_into().unwrap_or([0; 4])),
-            };
+      if let Err(e) = ov_stream.readable().await {
+        eprintln!("Failed to wait for onboard vision socket: {}", e);
+        return;
+      }
 
-            let mut lock = tx.write().await;
-
-            lock.vis = Some(msg);
+      loop {
+        match ov_stream.try_read(&mut buf) {
+          Ok(0) => {
+            eprintln!("Onboard vision socket closed");
+            return;
           }
-        }
-        Err(e) => {
-          eprintln!("Failed to read from onboard vision socket: {}", e);
-        }
-      };
+          Ok(size) => {
+            if size >= 12 {
+              // Keep only the latest packet if several are already buffered.
+              let msg = VisionMsg {
+                x: f32::from_le_bytes(buf[0..4].try_into().unwrap_or([0; 4])),
+                y: f32::from_le_bytes(buf[4..8].try_into().unwrap_or([0; 4])),
+                size: f32::from_be_bytes(buf[8..12].try_into().unwrap_or([0; 4])),
+              };
+
+              let mut lock = tx.write().await;
+
+              lock.vis = Some(msg);
+            }
+          }
+          Err(e) if e.kind() == ErrorKind::WouldBlock => break,
+          Err(e) => {
+            eprintln!("Failed to read from onboard vision socket: {}", e);
+            return;
+          }
+        };
+      }
     }
   });
 }

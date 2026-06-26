@@ -111,8 +111,8 @@ pub fn teensy_communication(cfg: &config::Config, tx: EventShare, rx: TeensyOut)
             break 'device_loop;
           }
         } else {
-          // No outbound data; yield to avoid busy-looping.
-          tokio::task::yield_now().await;
+          // No outbound data; sleep briefly to avoid busy-looping while still polling HID often.
+          sleep(Duration::from_millis(1)).await;
         }
       } // end 'device_loop
 

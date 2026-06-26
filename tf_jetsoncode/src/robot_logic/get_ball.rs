@@ -22,7 +22,7 @@ impl<C> Robot<C> {
       Vec2f::calculate_vector_2f(ball_pos, robot_pos + direction_vec.scale(80f32)).angle_to_u16();
 
     // Check based on the distance, if dribbler should be enabled
-    if to_ball.norm() < 200f32 {
+    if to_ball.norm_squared() < 200f32 * 200f32 {
       self.packets.robot_msg.set_flag(send_flags::DRIBBLER);
       self.packets.robot_msg.dribbler_pwr = 200;
     }
@@ -56,10 +56,7 @@ impl<C> Robot<C> {
       target_pos_mm: Vec2i::new(target.x as i32, target.y as i32),
       max_speed_mm_s: self.packets.cp_data.cmd.speed.unwrap_or_default(),
     };
-    let nav_command = self.orca.step(OrcaRequest {
-      intent,
-      world: world.clone(),
-    });
+    let nav_command = self.orca.step(OrcaRequest { intent, world });
     nav_command_to_teensy(&mut self.packets.robot_msg, nav_command);
     self.packets.robot_msg.speed = self.packets.robot_msg.speed.max(500);
     self.packets.robot_msg.orient = self.packets.cp_data.cmd.orientation.unwrap_or_default() as u16;

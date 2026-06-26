@@ -45,7 +45,7 @@ impl Vec2i {
     if s <= max_speed {
       return self;
     }
-    let k = (s  / 2f64) / max_speed;
+    let k = max_speed / s;
     Self {
       x: (vx * k).round() as i32,
       y: (vy * k).round() as i32,
@@ -243,16 +243,10 @@ impl Neg for Vec2f {
 }
 
 #[inline]
-pub(crate) fn distance_cpv(a: CpVector2, b: CpVector2) -> f32 {
+pub(crate) fn distance_cpv_squared(a: CpVector2, b: CpVector2) -> f32 {
   let dx = (a.x - b.x) as f32;
   let dy = (a.y - b.y) as f32;
-  (dx * dx + dy * dy).sqrt()
-}
-
-#[inline]
-pub(crate) fn distance_vec2f(a: Vec2f, b: Vec2f) -> f32 {
-  let c: Vec2f = Vec2f::new(a.x - b.x, a.y - b.y);
-  c.norm()
+  dx * dx + dy * dy
 }
 
 #[inline]

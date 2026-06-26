@@ -347,9 +347,9 @@ impl Default for OrcaParams {
   }
 }
 
-#[derive(Debug, Clone)]
-pub struct OrcaRequest {
-  pub world: WorldSnapshot,
+#[derive(Debug, Clone, Copy)]
+pub struct OrcaRequest<'a> {
+  pub world: &'a WorldSnapshot,
   pub intent: NavIntent,
 }
 
@@ -358,6 +358,7 @@ pub struct Orca {
   last_command_vel: Vec2i,
   last_world_time: Option<Instant>,
   params: OrcaParams,
+  work_lines: Vec<Line>,
 }
 
 impl Orca {
@@ -366,10 +367,11 @@ impl Orca {
       last_command_vel: Vec2i::default(),
       last_world_time: None,
       params,
+      work_lines: Vec::new(),
     }
   }
 
-  pub fn step(&mut self, req: OrcaRequest) -> NavCommand {
+  pub fn step(&mut self, req: OrcaRequest<'_>) -> NavCommand {
     let start = Instant::now();
     let req_world_time = req.world.now;
     let dt_s = self
@@ -378,7 +380,13 @@ impl Orca {
       .unwrap_or_else(|| (self.params.time_step_ms as f32 / 1000f32).max(0.001f32));
 
     let (preferred, max_speed) = preferred_velocity(&self.params, &req.world, req.intent);
-    let raw_vel = orca_step(&self.params, &req.world, preferred, max_speed);
+    let raw_vel = orca_step(
+      &self.params,
+      &req.world,
+      preferred,
+      max_speed,
+      &mut self.work_lines,
+    );
     let limited = limit_velocity_change(
       self.last_command_vel,
       raw_vel,
@@ -445,6 +453,7 @@ fn preferred_velocity(
 /// - Find the feasible velocity closest to the preferred velocity
 fn orca_step(
   params: &OrcaParams, world: &WorldSnapshot, preferred_vel: Vec2i, max_speed_mm_s: u32,
+  lines: &mut Vec<Line>,
 ) -> Vec2i {
   if max_speed_mm_s == 0 {
     return Vec2i::default();
@@ -464,11 +473,19 @@ fn orca_step(
     true,
   );
 
-  let lines = create_orca_lines(params, self_pos, self_vel, world, time_horizon, time_step);
+  create_orca_lines(
+    params,
+    self_pos,
+    self_vel,
+    world,
+    time_horizon,
+    time_step,
+    lines,
+  );
   let mut new_vel = Vec2f::default();
-  let fail = linear_program_2(&lines, max_speed, pref_vel, false, &mut new_vel);
+  let fail = linear_program_2(lines, max_speed, pref_vel, false, &mut new_vel);
   if fail < lines.len() {
-    linear_program_3(&lines, 0, fail, max_speed, &mut new_vel);
+    linear_program_3(lines, 0, fail, max_speed, &mut new_vel);
   }
 
   let adjusted = apply_static_avoidance(params, world, self_pos, new_vel, true);
@@ -761,9 +778,14 @@ struct Line {
 
 fn create_orca_lines(
   params: &OrcaParams, self_pos: Vec2f, self_vel: Vec2f, world: &WorldSnapshot,
-  time_horizon_s: f32, time_step_s: f32,
-) -> Vec<Line> {
-  let mut lines = Vec::with_capacity(world.others.len() + usize::from(world.ball.is_some()));
+  time_horizon_s: f32, time_step_s: f32, lines: &mut Vec<Line>,
+) {
+  lines.clear();
+  let needed_capacity = world.others.len() + usize::from(world.ball.is_some());
+  if lines.capacity() < needed_capacity {
+    lines.reserve(needed_capacity - lines.capacity());
+  }
+
   for other in &world.others {
     if let Some(line) = moving_obstacle_line(
       params,
@@ -793,8 +815,6 @@ fn create_orca_lines(
       lines.push(line);
     }
   }
-
-  lines
 }
 
 fn moving_obstacle_line(
@@ -1039,6 +1059,13 @@ mod tests {
     }
   }
 
+  fn test_orca_step(
+    params: &OrcaParams, world: &WorldSnapshot, preferred: Vec2i, max_speed: u32,
+  ) -> Vec2i {
+    let mut lines = Vec::new();
+    orca_step(params, world, preferred, max_speed, &mut lines)
+  }
+
   #[test]
   fn clamp_speed() {
     let v = Vec2i::new(3000, 0).with_speed_clamped(1000);
@@ -1068,7 +1095,7 @@ mod tests {
       allow_own_penalty_area: false,
     };
     let preferred = Vec2i::new(1000, 0);
-    let out = orca_step(&params, &world, preferred, 1000);
+    let out = test_orca_step(&params, &world, preferred, 1000);
     assert!(out.norm_squared() <= (1000i32 * 1000i32) + 10);
     // With an obstacle directly ahead, ORCA shouldn't accelerate into it.
     assert!(out.x <= preferred.x);
@@ -1104,17 +1131,19 @@ mod tests {
       allow_own_penalty_area: false,
     };
     let preferred = Vec2i::new(1200, 0);
-    let out = orca_step(&params, &world, preferred, 1200);
+    let out = test_orca_step(&params, &world, preferred, 1200);
 
     let self_pos = Vec2f::new_from_vec2i(world.self_pos_mm);
     let self_vel = Vec2f::new_from_vec2i(world.self_vel_mm_s);
-    let lines = create_orca_lines(
+    let mut lines = Vec::new();
+    create_orca_lines(
       &params,
       self_pos,
       self_vel,
       &world,
       (params.time_horizon_ms as f32 / 1000.0).max(0.01),
       (params.time_step_ms as f32 / 1000.0).max(0.001),
+      &mut lines,
     );
     let out_v = Vec2f::new_from_vec2i(out);
     for line in lines {
@@ -1139,7 +1168,7 @@ mod tests {
       field: test_field(),
       allow_own_penalty_area: false,
     };
-    let out = orca_step(&params, &world, Vec2i::new(0, 2_000), 2_000);
+    let out = test_orca_step(&params, &world, Vec2i::new(0, 2_000), 2_000);
     assert!(out.y <= 0, "out={:?}", out);
   }
 
@@ -1155,13 +1184,14 @@ mod tests {
     let dt = params.time_step_ms as f32 / 1000.0;
     let mut pos = Vec2f::new_from_vec2i(world.self_pos_mm);
     let mut vel = Vec2f::default();
+    let mut lines = Vec::new();
     let mut path = Vec::with_capacity(steps + 1);
     path.push(pos);
     for _ in 0..steps {
       world.self_pos_mm = pos.into();
       world.self_vel_mm_s = vel.into();
       let pref = ((target - world.self_pos_mm) * 2).with_speed_clamped(max_speed);
-      let raw = orca_step(&params, &world, pref, max_speed);
+      let raw = orca_step(&params, &world, pref, max_speed, &mut lines);
       let limited = limit_velocity_change(
         vel.into(),
         raw,
@@ -1200,7 +1230,7 @@ mod tests {
     };
     // Well away from the box, aimed at it: must not be throttled by the keep-out zone.
     let world = base_world(Vec2i::new(-1_000, 0));
-    let out = orca_step(&params, &world, Vec2i::new(-3_000, 0), 3_000);
+    let out = test_orca_step(&params, &world, Vec2i::new(-3_000, 0), 3_000);
     assert!(
       out.x < -2_800,
       "should drive fast toward the box, out={out:?}"
@@ -1222,7 +1252,7 @@ mod tests {
     let world = base_world(Vec2i::new(near_x, 0));
 
     // Driving tangentially (along the box) right next to it must not be throttled.
-    let along = orca_step(&params, &world, Vec2i::new(0, 3_000), 3_000);
+    let along = test_orca_step(&params, &world, Vec2i::new(0, 3_000), 3_000);
     assert!(
       along.y > 2_800,
       "should move full speed alongside the box, out={along:?}"
@@ -1329,7 +1359,7 @@ mod tests {
       field: test_field(),
       allow_own_penalty_area: true,
     };
-    let out = orca_step(&params, &world, Vec2i::new(2_000, 0), 2_000);
+    let out = test_orca_step(&params, &world, Vec2i::new(2_000, 0), 2_000);
     assert!(out.x > 0, "out={:?}", out);
   }
 
@@ -1353,7 +1383,7 @@ mod tests {
       field: test_field(),
       allow_own_penalty_area: false,
     };
-    let out = orca_step(&params, &world, Vec2i::new(1_000, 0), 1_000);
+    let out = test_orca_step(&params, &world, Vec2i::new(1_000, 0), 1_000);
     assert!(out.x <= 1_000);
   }
 

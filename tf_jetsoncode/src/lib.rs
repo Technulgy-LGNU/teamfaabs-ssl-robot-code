@@ -32,7 +32,9 @@ pub struct Robot<C = CommunicationChannels> {
   params: OrcaParams,
   orca: Orca,
   was_goalie: bool,
+  last_button_flags: u32,
   packets: PacketBuffer,
+  cp_send_buf: Vec<u8>,
   comm: C,
 }
 
@@ -72,9 +74,9 @@ impl Robot {
   pub async fn recv(&mut self) {
     // Drain the latest state from each channel
     let events = {
-      let lock = self.comm.rx.read().await;
+      let mut lock = self.comm.rx.write().await;
 
-      lock.clone().take()
+      std::mem::take(&mut *lock)
     };
 
     self.interpret(events);
@@ -104,7 +106,13 @@ impl Robot {
     // At the end of the loop, send cp update data
     let cp_update_data = self.cp_packet();
 
-    send_cp(&self.config, &self.comm.udp_socket, cp_update_data).await;
+    send_cp(
+      &self.config,
+      &self.comm.udp_socket,
+      cp_update_data,
+      &mut self.cp_send_buf,
+    )
+    .await;
   }
 }
 
@@ -133,7 +141,9 @@ impl<C> Robot<C> {
       orca,
       params,
       was_goalie: false,
+      last_button_flags: 0,
       packets: PacketBuffer::new(),
+      cp_send_buf: Vec::new(),
       comm,
     }
   }
@@ -214,11 +224,17 @@ impl<C> Robot<C> {
 
     // Buttons
     // React to button presses
-    for i in 0..15 {
-      if self.packets.teensy_data.button(i) {
-        println!("Button {} pressed", i);
+    const BUTTON_MASK: u32 = ((1u32 << 15) - 1) << 8;
+    let button_flags = self.packets.teensy_data.flags & BUTTON_MASK;
+    let newly_pressed = button_flags & !self.last_button_flags;
+    if newly_pressed != 0 {
+      for i in 0..15 {
+        if newly_pressed & (1u32 << (8 + i)) != 0 {
+          info!("Button {} pressed", i);
+        }
       }
     }
+    self.last_button_flags = button_flags;
 
     // Clear all flags
     self.packets.robot_msg.clear_all_flags();
@@ -239,7 +255,7 @@ impl<C> Robot<C> {
       CpState::StateHalt => {
         // Robot is not allowed to move
         let nav_command = self.orca.step(OrcaRequest {
-          world,
+          world: &world,
           intent: NavIntent::Stop,
         });
         nav_command_to_teensy(&mut self.packets.robot_msg, nav_command);
@@ -272,7 +288,7 @@ impl<C> Robot<C> {
         // Substitute
         // HALT
         let nav_command = self.orca.step(OrcaRequest {
-          world,
+          world: &world,
           intent: NavIntent::Stop,
         });
         nav_command_to_teensy(&mut self.packets.robot_msg, nav_command);

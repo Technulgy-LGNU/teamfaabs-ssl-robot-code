@@ -1,6 +1,6 @@
 use crate::Robot;
 use crate::robot_logic::helpers::{raw_move_towards, raw_movement_accel};
-use crate::robot_logic::vec::{Vec2f, distance_vec2f};
+use crate::robot_logic::vec::Vec2f;
 
 impl<C> Robot<C> {
   #[inline]
@@ -21,7 +21,7 @@ impl<C> Robot<C> {
 
     raw_move_towards(&mut self.packets.robot_msg, robot_pos, interception_point);
 
-    if distance_vec2f(robot_pos, ball_pos) <= 50f32 {
+    if (robot_pos - ball_pos).norm_squared() <= 50f32 * 50f32 {
       self.packets.robot_msg.speed = 0;
     }
   }
