@@ -1,9 +1,9 @@
-use crate::Robot;
 use crate::communication::send_flags;
 use crate::robot_logic::orca::{
-  NavIntent, OrcaRequest, Vec2i, WorldSnapshot, nav_command_to_teensy,
+  nav_command_to_teensy, NavIntent, OrcaRequest, Vec2i, WorldSnapshot,
 };
-use crate::robot_logic::vec::{Vec2f, distance_cpv_squared};
+use crate::robot_logic::vec::{distance_cpv_squared, Vec2f};
+use crate::Robot;
 use core_dump::proto::CpTask;
 
 mod defense;
@@ -31,7 +31,6 @@ impl<C> Robot<C> {
     match CpTask::try_from(self.packets.cp_data.cmd.task).unwrap_or(CpTask::TaskUnspecified) {
       CpTask::TaskUnspecified => {
         // UNKNOWN
-        println!("UNKNOWN");
         self.packets.robot_msg.set_flag(send_flags::ERROR);
       }
       CpTask::TaskPos => {
@@ -73,7 +72,7 @@ impl<C> Robot<C> {
         if (self.packets.robot_self.orientation
           - self.packets.cp_data.cmd.kick_orient.unwrap_or_default() as i32)
           .abs()
-          > 5
+          > 10
         {
           // If we are facing the right direction (variance of five degrees)
           self.packets.robot_msg.orient =
@@ -86,6 +85,7 @@ impl<C> Robot<C> {
 
         if !self.packets.teensy_data.has_ball() {
           has_kicked = true;
+          self.packets.robot_msg.clear_all_flags();
         }
       }
       CpTask::TaskChip => {

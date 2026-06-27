@@ -249,7 +249,6 @@ impl<C> Robot<C> {
     // Game Logic
     match CpState::try_from(self.packets.cp_data.cmd.state).unwrap_or(CpState::StateUnspecified) {
       CpState::StateUnspecified => {
-        info!("UNKNOWN");
         self.packets.robot_msg.set_flag(send_flags::ERROR);
       }
       CpState::StateHalt => {
