@@ -64,20 +64,8 @@ help:
 list-robots:
 	@$(foreach id,$(ROBOT_IDS),echo "  $(id) -> $($(strip ROBOT_$(id)_HOST))";)
 
-cross-build-debug:
-	$(CROSS) build --target $(TARGET)
-
 cross-build-release:
 	$(CROSS) build --target $(TARGET) --release
-
-upload-debug: cross-build-debug
-	@set -e; \
-	for id in $(SELECTED_ROBOTS); do \
-		case "$$id" in $(ROBOT_HOST_CASES) *) echo "Unknown robot $$id"; exit 1 ;; esac; \
-		echo "==> Uploading debug to robot $$id ($$host)"; \
-		ssh $(SSH_USER)@$$host "pkill $(BINARY) || true"; \
-		scp $(DEBUG_BIN) $(SSH_USER)@$$host:$(DEBUG_REMOTE_DIR); \
-	done
 
 upload-release: cross-build-release
 	@set -e; \
@@ -86,14 +74,6 @@ upload-release: cross-build-release
 		echo "==> Uploading release to robot $$id ($$host)"; \
 		ssh $(SSH_USER)@$$host "pkill $(BINARY) || true"; \
 		scp $(RELEASE_BIN) $(SSH_USER)@$$host:$(REMOTE_DIR); \
-	done
-
-run-debug: upload-debug
-	@set -e; \
-	for id in $(SELECTED_ROBOTS); do \
-		case "$$id" in $(ROBOT_HOST_CASES) *) echo "Unknown robot $$id"; exit 1 ;; esac; \
-		echo "==> Running debug on robot $$id ($$host)"; \
-		ssh $(SSH_USER)@$$host "cd $(DEBUG_RUN_DIR) && ./$(BINARY)"; \
 	done
 
 run-release: upload-release
