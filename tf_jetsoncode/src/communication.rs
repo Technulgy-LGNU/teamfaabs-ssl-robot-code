@@ -12,7 +12,7 @@ pub mod send_cp;
 pub mod teensy_communication;
 
 /// Raw Stream from the OnBoard Jetson Vision
-#[derive(Default, Clone)]
+#[derive(Default, Clone, Debug)]
 pub struct VisionMsg {
   pub x: f32,
   pub y: f32,
@@ -189,7 +189,7 @@ impl TeensyOut {
   }
 }
 
-#[derive(Default, Clone)]
+#[derive(Default, Clone, Debug)]
 pub struct Events {
   pub cp: Option<CpRobot>,
   pub vis: Option<VisionMsg>,
