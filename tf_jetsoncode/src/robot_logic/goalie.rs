@@ -2,7 +2,7 @@ use crate::Robot;
 use crate::communication::send_flags;
 use crate::robot_logic::RAW_MAX_SPEED_MM_S;
 use crate::robot_logic::helpers::{
-  clamp_to_own_penalty, inside_own_penalty_area, own_goal_side, own_goal_x, raw_move_towards,
+  clamp_to_own_penalty, inside_own_penalty_area, own_goal_side, own_goal_x,
 };
 use crate::robot_logic::orca::{NavIntent, OrcaRequest, WorldSnapshot, nav_command_to_teensy};
 use crate::robot_logic::vec::{Vec2f, Vec2i, lerp};
@@ -12,12 +12,10 @@ use core_dump::proto::CpInfos;
 const GOAL_LINE_MARGIN_MM: f32 = 120f32;
 // Extra distance from the outer penalty-area edge when the ball is far away.
 const PENALTY_EDGE_MARGIN_MM: f32 = 0f32;
-// Distance in front of the goal line used as the interception lane.
-const INTERCEPT_LINE_MM: f32 = 220f32;
 // Prediction horizon used to detect a kick/shot that is likely to reach goal.
 const SHOT_LOOKAHEAD_S: f32 = 4f32;
 // Allowed vertical miss tolerance when deciding that a ball is heading at goal.
-const SHOT_Y_MARGIN_MM: f32 = 450f32;
+const SHOT_Y_MARGIN_MM: f32 = 10_000f32;
 // Only run the dribbler when the ball is close enough to be collected.
 const DRIBBLER_RANGE_MM: f32 = 150f32;
 // Keeps the goalie inside the goal opening instead of hugging the exact edge.
@@ -34,6 +32,11 @@ impl<C> Robot<C> {
       .ball
       .vel
       .map_or(Vec2f::new(0f32, 0f32), Vec2f::new_from_cp);
+    let self_vel = self
+      .packets
+      .robot_self
+      .vel
+      .map_or(Vec2f::new(0f32, 0f32), Vec2f::new_from_cp);
 
     // Always face the ball globally, independent of the movement direction.
     self.packets.robot_msg.orient = (ball_pos - self_pos).angle_to_u16();
@@ -42,11 +45,11 @@ impl<C> Robot<C> {
     }
 
     // Choose a defensive target: either a predicted interception point or a guard point.
-    let target = goalie_target(&self.packets.cp_data.infos, ball_pos, ball_vel);
+    let target = goalie_target(&self.packets.cp_data.infos, self_pos, ball_pos, ball_vel);
 
     if inside_own_penalty_area(&self.packets.cp_data.infos, self_pos) {
       // Once inside the penalty area, use raw field-global motion instead of ORCA.
-      raw_move_towards(&mut self.packets.robot_msg, self_pos, target);
+      goalie_move_towards(&mut self.packets.robot_msg, self_pos, self_vel, target);
 
       // Keep looking at the ball while moving.
       self.packets.robot_msg.orient = (ball_pos - self_pos).angle_to_u16();
@@ -72,7 +75,29 @@ fn should_run_goalie_dribbler(self_pos: Vec2f, ball_pos: Vec2f, ball_vel: Vec2f)
 }
 
 #[inline]
-fn goalie_target(infos: &CpInfos, ball_pos: Vec2f, ball_vel: Vec2f) -> Vec2f {
+fn goalie_move_towards(
+  msg: &mut crate::communication::TeensySendMsg, self_pos: Vec2f, self_vel: Vec2f, target: Vec2f,
+) {
+  let delta = target - self_pos;
+  let distance = delta.norm();
+  if distance <= crate::robot_logic::RAW_STOP_RADIUS_MM && self_vel.norm() < 120f32 {
+    msg.speed = 0;
+    return;
+  }
+
+  let desired = delta * 12f32 - self_vel * 1.25f32;
+  let speed = desired.norm();
+  if speed <= 1f32 {
+    msg.speed = 0;
+    return;
+  }
+
+  msg.dir = desired.angle_to_u16();
+  msg.speed = speed.clamp(0f32, RAW_MAX_SPEED_MM_S) as u16;
+}
+
+#[inline]
+fn goalie_target(infos: &CpInfos, self_pos: Vec2f, ball_pos: Vec2f, ball_vel: Vec2f) -> Vec2f {
   // Own goal is on x- or x+ depending on the robot_goal setting.
   let goal_x = own_goal_x(infos);
   let goal_side = own_goal_side(infos);
@@ -83,7 +108,7 @@ fn goalie_target(infos: &CpInfos, ball_pos: Vec2f, ball_vel: Vec2f) -> Vec2f {
   let penalty_outer_x = goal_x - goal_side * penalty_depth;
 
   // If the ball is moving toward goal fast enough, try to intercept it.
-  if let Some(intercept) = predict_intercept(infos, ball_pos, ball_vel) {
+  if let Some(intercept) = predict_intercept(infos, self_pos, ball_pos, ball_vel) {
     return clamp_to_own_penalty(infos, intercept);
   }
 
@@ -106,25 +131,16 @@ fn goalie_target(infos: &CpInfos, ball_pos: Vec2f, ball_vel: Vec2f) -> Vec2f {
 
 #[inline]
 pub(crate) fn predict_intercept(
-  infos: &CpInfos, ball_pos: Vec2f, ball_vel: Vec2f,
+  infos: &CpInfos, self_pos: Vec2f, ball_pos: Vec2f, ball_vel: Vec2f,
 ) -> Option<Vec2f> {
   let goal_x = own_goal_x(infos);
   let goal_side = own_goal_side(infos);
   // Positive values mean the ball is moving toward our goal line.
   let vel_toward_goal = ball_vel.x * goal_side;
 
-  if vel_toward_goal <= 120f32 || ball_vel.x.abs() <= 1f32 {
+  if vel_toward_goal <= 120f32 || ball_vel.x.abs() <= 1f32 || ball_vel.norm() <= 100f32 {
     return None;
   }
-
-  let intercept_x = goal_x - goal_side * INTERCEPT_LINE_MM;
-
-  // Estimate where the ball reaches the line the goalie can actually block on.
-  let t_intercept = (intercept_x - ball_pos.x) / ball_vel.x;
-  if !(0f32..=SHOT_LOOKAHEAD_S).contains(&t_intercept) {
-    return None;
-  }
-  let intercept_y = ball_pos.y + ball_vel.y * t_intercept;
 
   // Estimate when the ball reaches the goal line in the current trajectory.
   let t_goal = (goal_x - ball_pos.x) / ball_vel.x;
@@ -139,6 +155,33 @@ pub(crate) fn predict_intercept(
     return None;
   }
 
-  // Place the goalie slightly in front of the expected impact point.
-  Some(Vec2f::new(intercept_x, intercept_y))
+  let penalty_depth = infos.penalty_area_height as f32;
+  let penalty_outer_x = goal_x - goal_side * penalty_depth;
+  let x_min = goal_x.min(penalty_outer_x) + 60f32;
+  let x_max = goal_x.max(penalty_outer_x) - 60f32;
+  let y_half = infos.penalty_area_width as f32 * 0.5 - 60f32;
+
+  if predicted_y.abs() > y_half && ball_vel.y.abs() > 1f32 {
+    let side_y = predicted_y.signum() * y_half;
+    let t_side = (side_y - ball_pos.y) / ball_vel.y;
+    if (0f32..=SHOT_LOOKAHEAD_S).contains(&t_side) {
+      let side_x = (ball_pos.x + ball_vel.x * t_side).clamp(x_min, x_max);
+      return Some(Vec2f::new(side_x, side_y));
+    }
+  }
+
+  let v2 = ball_vel.norm_squared();
+  let t_closest = ((self_pos - ball_pos).dot(ball_vel) / v2).clamp(0f32, SHOT_LOOKAHEAD_S);
+  let mut target = ball_pos + ball_vel * t_closest;
+
+  if target.x < x_min || target.x > x_max {
+    let target_x = target.x.clamp(x_min, x_max);
+    let t_at_x = ((target_x - ball_pos.x) / ball_vel.x).clamp(0f32, SHOT_LOOKAHEAD_S);
+    target = ball_pos + ball_vel * t_at_x;
+  }
+
+  target.x = target.x.clamp(x_min, x_max);
+  target.y = target.y.clamp(-y_half, y_half);
+
+  Some(target)
 }
