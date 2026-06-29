@@ -22,7 +22,7 @@ impl<C> Robot<C> {
       Vec2f::calculate_vector_2f(ball_pos, robot_pos + direction_vec.scale(80f32)).angle_to_u16();
 
     // Check based on the distance, if dribbler should be enabled
-    if to_ball.norm_squared() < 200f32 * 200f32 {
+    if to_ball.norm() < 200f32 {
       self.packets.robot_msg.set_flag(send_flags::DRIBBLER);
       self.packets.robot_msg.dribbler_pwr = 200;
     }

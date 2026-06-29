@@ -4,7 +4,7 @@ use crate::robot_logic::vec::Vec2f;
 
 impl<C> Robot<C> {
   #[inline]
-  pub(crate) fn receive_ball(&mut self) {
+  pub(crate) fn receive_ball(&mut self) -> bool {
     let robot_pos = Vec2f::new_from_cp(self.packets.robot_self.pos);
     let ball_pos = Vec2f::new_from_cp(self.packets.cp_data.ball.pos);
     let ball_vel = Vec2f::new_from_cp(self.packets.cp_data.ball.vel.unwrap_or_default());
@@ -12,18 +12,36 @@ impl<C> Robot<C> {
     // Check if ball is even moving towards robot
     if !is_moving_towards(ball_pos, ball_vel, robot_pos, 2000f32) {
       self.packets.robot_msg.speed = 0;
-      return;
+      return false;
     }
 
     let forward = (ball_pos - robot_pos).normalized();
     let interception_point = intercept_with_constraints(robot_pos, forward, ball_pos, ball_vel)
-      .unwrap_or_else(|| robot_pos);
+        .unwrap_or_else(|| robot_pos);
 
     raw_move_towards(&mut self.packets.robot_msg, robot_pos, interception_point);
 
-    if (robot_pos - ball_pos).norm_squared() <= 50f32 * 50f32 {
+    if (robot_pos + ball_pos).norm_squared() <= 50f32 * 50f32 {
       self.packets.robot_msg.speed = 0;
     }
+    true
+  }
+
+  #[inline]
+  pub fn collect_receive_ball(&mut self, robot_pos: Vec2f, ball_pos: Vec2f) {
+    let to_ball = ball_pos - robot_pos;
+    let dist = to_ball.norm();
+    if dist < 45f32 {
+      self.packets.robot_msg.speed = 0;
+      return;
+    }
+
+    raw_move_towards(&mut self.packets.robot_msg, robot_pos, ball_pos);
+    self.packets.robot_msg.speed = self.packets.robot_msg.speed.max(if dist < 250f32 {
+      350
+    } else {
+      700
+    });
   }
 }
 

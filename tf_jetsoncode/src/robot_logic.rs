@@ -1,9 +1,9 @@
+use crate::Robot;
 use crate::communication::send_flags;
 use crate::robot_logic::orca::{
-  nav_command_to_teensy, NavIntent, OrcaRequest, Vec2i, WorldSnapshot,
+  NavIntent, OrcaRequest, Vec2i, WorldSnapshot, nav_command_to_teensy,
 };
-use crate::robot_logic::vec::{distance_cpv_squared, Vec2f};
-use crate::Robot;
+use crate::robot_logic::vec::{Vec2f, distance_cpv_squared};
 use core_dump::proto::CpTask;
 
 mod defense;
@@ -113,13 +113,19 @@ impl<C> Robot<C> {
       CpTask::TaskRecKick => {
         has_kicked = false;
         // Rec Kick
-        if ball_vel.norm() >= 200f32 && !self.packets.teensy_data.has_ball() {
-          self.receive_ball();
+        if self.packets.teensy_data.has_ball() {
+          self.packets.robot_msg.speed = 0;
+        } else {
+          if ball_vel.norm() >= 200f32 && self.receive_ball() {
+            // Fast pass: intercept on its path.
+          } else {
+            // Slow / slightly missed pass: keep the receiving intent and collect
+            // the loose ball instead of idling while an opponent takes it.
+            self.collect_receive_ball(robot_pos, ball_pos);
+          }
 
           // Keep looking at the ball while moving.
           self.packets.robot_msg.orient = (ball_pos - robot_pos).angle_to_u16();
-        } else {
-          self.packets.robot_msg.speed = 0;
         }
 
         // Always enable dribbler
@@ -147,6 +153,10 @@ impl<C> Robot<C> {
           self.packets.robot_msg.dribbler_pwr = 200;
 
           nav_command_to_teensy(&mut self.packets.robot_msg, nav_command);
+          // Carry the ball facing the push direction (toward the dribble target)
+          // so the carrier is already aimed when it decides to kick.
+          self.packets.robot_msg.orient =
+            self.packets.cp_data.cmd.orientation.unwrap_or_default() as u16;
         } else {
           self.get_ball(world);
         }
