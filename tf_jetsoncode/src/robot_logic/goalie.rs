@@ -5,13 +5,11 @@ use crate::robot_logic::helpers::{
   clamp_to_own_penalty, inside_own_penalty_area, own_goal_side, own_goal_x,
 };
 use crate::robot_logic::orca::{NavIntent, OrcaRequest, WorldSnapshot, nav_command_to_teensy};
-use crate::robot_logic::vec::{Vec2f, Vec2i, lerp};
+use crate::robot_logic::vec::{Vec2f, Vec2i};
 use core_dump::proto::CpInfos;
 
 // How far the goalie should stay in front of the goal line when guarding.
 const GOAL_LINE_MARGIN_MM: f32 = 120f32;
-// Extra distance from the outer penalty-area edge when the ball is far away.
-const PENALTY_EDGE_MARGIN_MM: f32 = 0f32;
 // Prediction horizon used to detect a kick/shot that is likely to reach goal.
 const SHOT_LOOKAHEAD_S: f32 = 4f32;
 // Allowed vertical miss tolerance when deciding that a ball is heading at goal.
@@ -101,27 +99,20 @@ fn goalie_target(infos: &CpInfos, self_pos: Vec2f, ball_pos: Vec2f, ball_vel: Ve
   // Own goal is on x- or x+ depending on the robot_goal setting.
   let goal_x = own_goal_x(infos);
   let goal_side = own_goal_side(infos);
-  // Half the goal opening, used to keep the goalie aligned with the ball.
-  let goal_half_width = infos.goal_width as f32 * 0.5;
-  // The inner edge of the penalty area on our side.
-  let penalty_depth = infos.penalty_area_height as f32;
-  let penalty_outer_x = goal_x - goal_side * penalty_depth;
+  // Clamp to the goal width, allowing roughly one robot radius beyond each post.
+  let goal_half_width = infos.goal_width as f32 * 0.5 + 90f32;
 
   // If the ball is moving toward goal fast enough, try to intercept it.
   if let Some(intercept) = predict_intercept(infos, self_pos, ball_pos, ball_vel) {
     return clamp_to_own_penalty(infos, intercept);
   }
 
-  // Otherwise, guard the goal line when the ball is close, and move further out
-  // as the ball gets farther away so the robot protects more of the goal area.
+  // No imminent shot: hug the goal line and slide laterally to stay between the
+  // ball and the centre of the goal.
   let goal_guard_x = goal_x - goal_side * GOAL_LINE_MARGIN_MM;
-  let outer_guard_x = penalty_outer_x - goal_side * PENALTY_EDGE_MARGIN_MM;
-  let field_scale = (infos.width as f32 * 0.5).max(1f32);
-  // 0f32 near our goal, 1f32 near the far side of the field.
-  let outward = ((ball_pos.x - goal_x).abs() / field_scale).clamp(0f32, 1f32);
 
   Vec2f::new(
-    lerp(goal_guard_x, outer_guard_x, outward),
+    goal_guard_x,
     ball_pos.y.clamp(
       -goal_half_width + GUARD_Y_MARGIN_MM,
       goal_half_width - GUARD_Y_MARGIN_MM,
