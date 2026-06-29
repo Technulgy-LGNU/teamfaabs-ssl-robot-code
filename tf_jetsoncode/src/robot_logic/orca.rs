@@ -149,7 +149,7 @@ impl WorldSnapshot {
   /// - Units are assumed to already be *millimeters* and *millimeters/second* as described.
   pub fn from_cp(
     cp: &CpRobot, self_robot: &CpTrackedRobot, default_robot_radius_mm: u32,
-    ball_avoidance_radius_mm: u32, allow_own_penalty_area: bool,
+    ball_avoidance_radius_mm: u32, allow_own_penalty_area: bool, ignored_robot_ids: &[u32],
   ) -> Self {
     let self_id = self_robot.robot_id;
     let self_pos_mm = Vec2i::from_cp_vec2(&self_robot.pos);
@@ -165,12 +165,14 @@ impl WorldSnapshot {
       &mut others,
       &cp.robots_yellow,
       self_id,
+      ignored_robot_ids,
       default_robot_radius_mm,
     );
     append_others(
       &mut others,
       &cp.robots_blue,
       self_id,
+      ignored_robot_ids,
       default_robot_radius_mm,
     );
 
@@ -204,10 +206,11 @@ impl WorldSnapshot {
 }
 
 fn append_others(
-  out: &mut Vec<OtherRobot>, src: &[CpTrackedRobot], self_id: u32, default_radius_mm: u32,
+  out: &mut Vec<OtherRobot>, src: &[CpTrackedRobot], self_id: u32, ignored_robot_ids: &[u32],
+  default_radius_mm: u32,
 ) {
   for r in src {
-    if r.robot_id == self_id {
+    if r.robot_id == self_id || ignored_robot_ids.contains(&r.robot_id) {
       continue;
     }
     out.push(OtherRobot {
@@ -361,6 +364,16 @@ pub struct Orca {
   work_lines: Vec<Line>,
 }
 
+/// Fixed control-loop dt (seconds) when `SIMHARK_FIXED_DT_MS` is set, else None.
+/// Used only by the deterministic simulator benchmark; unset on real robots.
+#[inline]
+fn fixed_dt_s() -> Option<f32> {
+  std::env::var("SIMHARK_FIXED_DT_MS")
+    .ok()
+    .and_then(|s| s.parse::<f32>().ok())
+    .map(|ms| (ms / 1000f32).max(0.001))
+}
+
 impl Orca {
   pub fn new(params: OrcaParams) -> Self {
     Self {
@@ -374,10 +387,13 @@ impl Orca {
   pub fn step(&mut self, req: OrcaRequest<'_>) -> NavCommand {
     let start = Instant::now();
     let req_world_time = req.world.now;
-    let dt_s = self
-      .last_world_time
-      .map(|t| req_world_time.saturating_duration_since(t).as_secs_f32())
-      .unwrap_or_else(|| (self.params.time_step_ms as f32 / 1000f32).max(0.001f32));
+    let dt_s = match fixed_dt_s() {
+      Some(dt) => dt,
+      None => self
+        .last_world_time
+        .map(|t| req_world_time.saturating_duration_since(t).as_secs_f32())
+        .unwrap_or_else(|| (self.params.time_step_ms as f32 / 1000f32).max(0.001f32)),
+    };
 
     let (preferred, max_speed) = preferred_velocity(&self.params, &req.world, req.intent);
     let raw_vel = orca_step(
@@ -489,6 +505,27 @@ fn orca_step(
   }
 
   let adjusted = apply_static_avoidance(params, world, self_pos, new_vel, true);
+
+  if std::env::var("ORCA_DEBUG").is_ok() {
+    eprintln!(
+      "[orca] self=({:.0},{:.0}) selfvel=({:.0},{:.0}) max={max_speed_mm_s} lines={} pref=({:.0},{:.0}) lp=({:.0},{:.0}) adj=({:.0},{:.0}) field={:.0}x{:.0} others={} ball={}",
+      self_pos.x,
+      self_pos.y,
+      self_vel.x,
+      self_vel.y,
+      lines.len(),
+      pref_vel.x,
+      pref_vel.y,
+      new_vel.x,
+      new_vel.y,
+      adjusted.x,
+      adjusted.y,
+      world.field.width_mm,
+      world.field.height_mm,
+      world.others.len(),
+      world.ball.is_some(),
+    );
+  }
 
   Vec2i {
     x: adjusted.x.round() as i32,

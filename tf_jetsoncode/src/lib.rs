@@ -220,6 +220,7 @@ impl<C> Robot<C> {
       self.params.default_robot_radius_mm,
       ball_avoidance_margin_mm(&self.packets.cp_data, self.packets.robot_self),
       allow_own_penalty_area(&self.packets.cp_data),
+      &[], //TODO: we probably need to have a TaskWall or something
     );
 
     // Buttons
