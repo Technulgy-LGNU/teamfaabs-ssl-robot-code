@@ -21,6 +21,7 @@ const CATCH_BALL_RANGE_MM: f32 = 520f32;
 const CATCH_BALL_SPEED_MM_S: f32 = 60f32;
 const CATCH_LEAD_S: f32 = 0.25;
 const CATCH_FIELD_EXIT_MARGIN_MM: f32 = 260f32;
+const GOALIE_PASS_CHAIN_ADVANCE_MM: f32 = 500f32;
 // Keeps the goalie inside the goal opening instead of hugging the exact edge.
 const GUARD_Y_MARGIN_MM: f32 = 20f32;
 // Opponent center distance to the ball that is treated as active possession.
@@ -37,6 +38,11 @@ const TURNING_EXTRA_GOAL_WIDTH: f32 = 0.10;
 struct CarrierShotPrediction {
   goal_y: f32,
   guard_y: f32,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+struct GoaliePassTarget {
+  pos: Vec2f,
 }
 
 impl<C> Robot<C> {
@@ -61,14 +67,9 @@ impl<C> Robot<C> {
       self.packets.robot_msg.set_flag(send_flags::DRIBBLER);
       self.packets.robot_msg.dribbler_pwr = 200;
       if let Some(target) = goalie_pass_target(&self.packets.cp_data, self_pos) {
-        let to_target = target - self_pos;
+        let to_target = target.pos - self_pos;
         let pass_angle = to_target.angle_to_u16();
         self.packets.robot_msg.orient = pass_angle;
-        if heading_error_deg(self.packets.robot_self.orientation, pass_angle as i32) <= 10 {
-          let pass_dist = to_target.norm();
-          self.packets.robot_msg.kick_pwr = (pass_dist * 0.06).clamp(90f32, 200f32) as u8;
-          self.packets.robot_msg.set_flag(send_flags::KICK);
-        }
       } else {
         self.packets.robot_msg.orient = (Vec2f::new(0f32, 0f32) - self_pos).angle_to_u16();
       }
@@ -267,9 +268,9 @@ fn predict_carrier_shot(
 #[inline]
 fn opponent_carrier(cp_data: &CpRobot, ball_pos: Vec2f) -> Option<CpTrackedRobot> {
   let opponents = if cp_data.infos.team_color {
-    &cp_data.robots_yellow
-  } else {
     &cp_data.robots_blue
+  } else {
+    &cp_data.robots_yellow
   };
 
   opponents
@@ -290,28 +291,32 @@ fn opponent_carrier(cp_data: &CpRobot, ball_pos: Vec2f) -> Option<CpTrackedRobot
 }
 
 #[inline]
-fn goalie_pass_target(cp_data: &CpRobot, self_pos: Vec2f) -> Option<Vec2f> {
+fn goalie_pass_target(cp_data: &CpRobot, self_pos: Vec2f) -> Option<GoaliePassTarget> {
   let own = if cp_data.infos.team_color {
-    &cp_data.robots_blue
-  } else {
     &cp_data.robots_yellow
+  } else {
+    &cp_data.robots_blue
   };
   let opponents = if cp_data.infos.team_color {
-    &cp_data.robots_yellow
-  } else {
     &cp_data.robots_blue
+  } else {
+    &cp_data.robots_yellow
   };
   let goal_side = own_goal_side(&cp_data.infos);
   let penalty_front_x =
     own_goal_x(&cp_data.infos) - goal_side * cp_data.infos.penalty_area_height as f32;
-
-  own
+  let own_positions = own
     .iter()
     .filter(|robot| robot.robot_id != cp_data.robot_id)
     .filter(|robot| robot.visibility > 20)
     .map(|robot| Vec2f::new_from_cp(robot.pos))
     .filter(|pos| !inside_own_penalty_area(&cp_data.infos, *pos))
     .filter(|pos| (*pos - self_pos).norm() > 700f32)
+    .collect::<Vec<_>>();
+
+  own_positions
+    .iter()
+    .copied()
     .map(|pos| {
       let field_side = ((pos.x - penalty_front_x) * -goal_side).max(0f32);
       let central = (cp_data.infos.height as f32 * 0.5 - pos.y.abs()).max(0f32) * 0.05;
@@ -321,11 +326,16 @@ fn goalie_pass_target(cp_data: &CpRobot, self_pos: Vec2f) -> Option<Vec2f> {
         .filter(|robot| robot.visibility > 20)
         .map(|robot| (Vec2f::new_from_cp(robot.pos) - pos).norm())
         .fold(f32::INFINITY, f32::min);
-      let score = field_side * 0.55 + nearest_opp.min(1800f32) * 0.35 + central - distance * 0.08;
-      (pos, score)
+      let has_chain_outlet = own_positions.iter().any(|other| {
+        *other != pos && ((other.x - pos.x) * -goal_side) >= GOALIE_PASS_CHAIN_ADVANCE_MM
+      });
+      let chain_bonus = if has_chain_outlet { 2_000f32 } else { 0f32 };
+      let score = chain_bonus + field_side * 0.55 + nearest_opp.min(1800f32) * 0.35 + central
+        - distance * 0.08;
+      (GoaliePassTarget { pos }, score)
     })
     .max_by(|(_, a), (_, b)| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal))
-    .map(|(pos, _)| pos)
+    .map(|(target, _)| target)
 }
 
 #[inline]
@@ -422,12 +432,6 @@ fn heading_dir(heading_deg: f32) -> Vec2f {
 #[inline]
 fn angle_delta_deg(current: f32, previous: f32) -> f32 {
   (current - previous + 180f32).rem_euclid(360f32) - 180f32
-}
-
-#[inline]
-fn heading_error_deg(current: i32, target: i32) -> i32 {
-  let error = (target - current + 180).rem_euclid(360) - 180;
-  error.abs()
 }
 
 #[inline]
@@ -607,12 +611,13 @@ mod tests {
       robot(0, -4300, 0, 0),
       robot(1, -3700, 0, 0),
       robot(2, -2100, 650, 0),
+      robot(3, -900, -350, 0),
     ];
     cp_data.robots_yellow = vec![robot(4, -2200, -700, 180)];
 
     let target = goalie_pass_target(&cp_data, Vec2f::new(-4300f32, 0f32)).unwrap();
 
-    assert_eq!(target, Vec2f::new(-2100f32, 650f32));
-    assert!(!inside_own_penalty_area(&cp_data.infos, target));
+    assert_eq!(target.pos, Vec2f::new(-2100f32, 650f32));
+    assert!(!inside_own_penalty_area(&cp_data.infos, target.pos));
   }
 }

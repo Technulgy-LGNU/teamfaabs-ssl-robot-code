@@ -6,6 +6,9 @@ use crate::robot_logic::vec::{Vec2f, Vec2i};
 
 /// Distance to ball where we switch to direct control
 const BALL_APPROACH_DISTANCE: f32 = 150f32;
+/// Close acquisition should not be softened by ORCA. At this range the robot
+/// has been tactically selected to win the ball, so drive directly into pickup.
+const RAW_ACQUIRE_DISTANCE: f32 = 900f32;
 /// Functions drives behind the ball and then drives forward and stops with ball in capturing zone
 
 impl<C> Robot<C> {
@@ -18,14 +21,32 @@ impl<C> Robot<C> {
     let robot_pos = Vec2f::new_from_cp(self.packets.robot_self.pos);
     let ball_pos = Vec2f::new_from_cp(self.packets.cp_data.ball.pos);
     let ball_vel = Vec2f::new_from_cp(self.packets.cp_data.ball.vel.unwrap_or_default());
+    let ball_dist = (ball_pos - robot_pos).norm();
 
     // We are intentionally acquiring the ball, so spin the dribbler before IR
     // contact instead of waiting for the ball to already be in the mouth.
     self.packets.robot_msg.set_flag(send_flags::DRIBBLER);
     self.packets.robot_msg.dribbler_pwr = 200;
 
+    if self.packets.teensy_data.has_ball() {
+      self.packets.robot_msg.speed = 0;
+      self.packets.robot_msg.orient = self
+        .packets
+        .cp_data
+        .cmd
+        .orientation
+        .unwrap_or(self.packets.robot_self.orientation as u32)
+        as u16;
+      return;
+    }
+
     if ball_vel.norm() > 250f32 && ball_is_incoming(ball_pos, ball_vel, robot_pos, 1500f32) {
       let target = lead_intercept(robot_pos, ball_pos, ball_vel);
+
+      if ball_dist <= RAW_ACQUIRE_DISTANCE {
+        self.raw_acquire_towards(robot_pos, target, ball_pos);
+        return;
+      }
 
       let intent = NavIntent::GoToPosition {
         target_pos_mm: Vec2i::new(target.x as i32, target.y as i32),
@@ -35,6 +56,11 @@ impl<C> Robot<C> {
       nav_command_to_teensy(&mut self.packets.robot_msg, nav_command);
       self.packets.robot_msg.speed = self.packets.robot_msg.speed.max(500);
       self.packets.robot_msg.orient = (ball_pos - robot_pos).angle_to_u16();
+      return;
+    }
+
+    if ball_dist <= RAW_ACQUIRE_DISTANCE {
+      self.raw_acquire_towards(robot_pos, ball_pos, ball_pos);
       return;
     }
 
@@ -78,6 +104,20 @@ impl<C> Robot<C> {
     self.packets.robot_msg.speed = self.packets.robot_msg.speed.max(500);
     self.packets.robot_msg.orient = (ball_pos - robot_pos).angle_to_u16();
   }
+
+  #[inline]
+  fn raw_acquire_towards(&mut self, robot_pos: Vec2f, target: Vec2f, face: Vec2f) {
+    let delta = target - robot_pos;
+    let dist = delta.norm();
+    if dist <= 1f32 {
+      self.packets.robot_msg.speed = 0;
+    } else {
+      self.packets.robot_msg.dir = delta.angle_to_u16();
+      self.packets.robot_msg.speed =
+        raw_acquisition_speed(dist, self.packets.cp_data.cmd.speed.unwrap_or_default());
+    }
+    self.packets.robot_msg.orient = (face - robot_pos).angle_to_u16();
+  }
 }
 
 #[inline]
@@ -116,4 +156,10 @@ fn lead_intercept(robot_pos: Vec2f, ball_pos: Vec2f, ball_vel: Vec2f) -> Vec2f {
 #[inline]
 fn acquisition_speed(command_speed: Option<u32>) -> u16 {
   command_speed.unwrap_or(500).clamp(500, 900) as u16
+}
+
+#[inline]
+fn raw_acquisition_speed(dist_mm: f32, command_speed: u32) -> u16 {
+  let requested = command_speed.max(1600) as f32;
+  (dist_mm * 4.0).clamp(450f32, requested.min(2200f32)) as u16
 }

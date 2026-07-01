@@ -12,8 +12,7 @@ impl<C> Robot<C> {
 
     // Get the robot based on its id and cannot
     let to_block_robot = match self.packets.cp_data.infos.team_color {
-      // False stands for being in the yellow team
-      false => Vec2f::new_from_cp(
+      true => Vec2f::new_from_cp(
         self
           .packets
           .cp_data
@@ -23,8 +22,7 @@ impl<C> Robot<C> {
           .unwrap_or(&CpTrackedRobot::default())
           .pos,
       ),
-      // True stands for being in the blue team
-      true => Vec2f::new_from_cp(
+      false => Vec2f::new_from_cp(
         self
           .packets
           .cp_data
