@@ -1,4 +1,5 @@
 use crate::communication::send_flags;
+use crate::robot_logic::helpers::raw_move_towards;
 use crate::robot_logic::orca::{
   NavIntent, OrcaRequest, Vec2i, WorldSnapshot, nav_command_to_teensy,
 };
@@ -46,18 +47,20 @@ impl<C> Robot<C> {
           self.packets.cp_data.cmd.speed.unwrap_or_default()
         };
 
-        // Check if near of pos, and then stop
-        if distance_cpv_squared(
-          self.packets.robot_self.pos,
-          self.packets.cp_data.cmd.pos.unwrap_or_default(),
-        ) < 60.0 * 60.0
-        {
+        let target_pos = self.packets.cp_data.cmd.pos.unwrap_or_default();
+        if self.packets.cp_data.cmd.raw.unwrap_or(false) {
+          raw_move_towards(
+            &mut self.packets.robot_msg,
+            robot_pos,
+            Vec2f::new_from_cp(target_pos),
+          );
+        } else if distance_cpv_squared(self.packets.robot_self.pos, target_pos) < 60.0 * 60.0 {
           let intent = NavIntent::Stop;
           let nav_command = self.orca.step(OrcaRequest { intent, world });
           nav_command_to_teensy(&mut self.packets.robot_msg, nav_command);
         } else {
           let nav_intent = NavIntent::GoToPosition {
-            target_pos_mm: Vec2i::new_from_cp(self.packets.cp_data.cmd.pos.unwrap_or_default()),
+            target_pos_mm: Vec2i::new_from_cp(target_pos),
             max_speed_mm_s,
           };
           let nav_command = self.orca.step(OrcaRequest {
