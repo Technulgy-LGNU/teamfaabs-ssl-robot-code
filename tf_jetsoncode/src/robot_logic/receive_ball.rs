@@ -17,7 +17,7 @@ impl<C> Robot<C> {
 
     let forward = (ball_pos - robot_pos).normalized();
     let interception_point = intercept_with_constraints(robot_pos, forward, ball_pos, ball_vel)
-        .unwrap_or_else(|| robot_pos);
+      .unwrap_or_else(|| robot_pos);
 
     raw_move_towards(&mut self.packets.robot_msg, robot_pos, interception_point);
 
@@ -37,11 +37,12 @@ impl<C> Robot<C> {
     }
 
     raw_move_towards(&mut self.packets.robot_msg, robot_pos, ball_pos);
-    self.packets.robot_msg.speed = self.packets.robot_msg.speed.max(if dist < 250f32 {
-      350
-    } else {
-      700
-    });
+    self.packets.robot_msg.speed =
+      self
+        .packets
+        .robot_msg
+        .speed
+        .max(if dist < 250f32 { 350 } else { 700 });
   }
 }
 

@@ -17,15 +17,30 @@ impl<C> Robot<C> {
     );
     let robot_pos = Vec2f::new_from_cp(self.packets.robot_self.pos);
     let ball_pos = Vec2f::new_from_cp(self.packets.cp_data.ball.pos);
+    let ball_vel = Vec2f::new_from_cp(self.packets.cp_data.ball.vel.unwrap_or_default());
+
+    // We are intentionally acquiring the ball, so spin the dribbler before IR
+    // contact instead of waiting for the ball to already be in the mouth.
+    self.packets.robot_msg.set_flag(send_flags::DRIBBLER);
+    self.packets.robot_msg.dribbler_pwr = 200;
+
+    if ball_vel.norm() > 250f32 && ball_is_incoming(ball_pos, ball_vel, robot_pos, 1500f32) {
+      let target = lead_intercept(robot_pos, ball_pos, ball_vel);
+
+      let intent = NavIntent::GoToPosition {
+        target_pos_mm: Vec2i::new(target.x as i32, target.y as i32),
+        max_speed_mm_s: self.packets.cp_data.cmd.speed.unwrap_or_default().max(2000),
+      };
+      let nav_command = self.orca.step(OrcaRequest { intent, world });
+      nav_command_to_teensy(&mut self.packets.robot_msg, nav_command);
+      self.packets.robot_msg.speed = self.packets.robot_msg.speed.max(500);
+      self.packets.robot_msg.orient = (ball_pos - robot_pos).angle_to_u16();
+      return;
+    }
+
     let to_ball = Vec2f::calculate_vector_2f(robot_pos, ball_pos);
     let capture_zone_to_ball =
       Vec2f::calculate_vector_2f(ball_pos, robot_pos + direction_vec.scale(80f32)).angle_to_u16();
-
-    // Check based on the distance, if dribbler should be enabled
-    if to_ball.norm() < 200f32 {
-      self.packets.robot_msg.set_flag(send_flags::DRIBBLER);
-      self.packets.robot_msg.dribbler_pwr = 200;
-    }
 
     // First check, if we already are in front of the ball, if yes, move forwards
     // Transformation vector with respected input angle
@@ -37,12 +52,14 @@ impl<C> Robot<C> {
     };
     if trans_vector.y.is_sign_positive() && trans_vector.x.abs() < 15f32 {
       self.packets.robot_msg.dir = self.packets.cp_data.cmd.orientation.unwrap_or_default() as u16;
-      self.packets.robot_msg.speed = 500;
+      self.packets.robot_msg.speed = acquisition_speed(self.packets.cp_data.cmd.speed);
+      self.packets.robot_msg.orient = (ball_pos - robot_pos).angle_to_u16();
 
       return;
     } else if trans_vector.y.is_sign_positive() && trans_vector.x.abs() < 35f32 {
       self.packets.robot_msg.dir = capture_zone_to_ball;
-      self.packets.robot_msg.speed = 500;
+      self.packets.robot_msg.speed = acquisition_speed(self.packets.cp_data.cmd.speed);
+      self.packets.robot_msg.orient = (ball_pos - robot_pos).angle_to_u16();
 
       return;
     }
@@ -59,6 +76,44 @@ impl<C> Robot<C> {
     let nav_command = self.orca.step(OrcaRequest { intent, world });
     nav_command_to_teensy(&mut self.packets.robot_msg, nav_command);
     self.packets.robot_msg.speed = self.packets.robot_msg.speed.max(500);
-    self.packets.robot_msg.orient = self.packets.cp_data.cmd.orientation.unwrap_or_default() as u16;
+    self.packets.robot_msg.orient = (ball_pos - robot_pos).angle_to_u16();
   }
+}
+
+#[inline]
+fn ball_is_incoming(ball_pos: Vec2f, ball_vel: Vec2f, robot_pos: Vec2f, radius: f32) -> bool {
+  let v2 = ball_vel.norm_squared();
+  if v2 < 1e-6 {
+    return false;
+  }
+
+  let t = (robot_pos - ball_pos).dot(ball_vel) / v2;
+  if t < -0.2 {
+    return false;
+  }
+
+  let closest = ball_pos + ball_vel.scale(t.max(0f32));
+  (closest - robot_pos).norm_squared() <= radius * radius
+}
+
+#[inline]
+fn lead_intercept(robot_pos: Vec2f, ball_pos: Vec2f, ball_vel: Vec2f) -> Vec2f {
+  const ROBOT_SPEED_MM_S: f32 = 2200f32;
+  let mut t = 0f32;
+  while t < 1.5f32 {
+    let ball = ball_pos + ball_vel.scale(t);
+    if (ball - robot_pos).norm() / ROBOT_SPEED_MM_S <= t {
+      return ball;
+    }
+    t += 0.05f32;
+  }
+
+  let v2 = ball_vel.norm_squared().max(1e-6);
+  let t = ((robot_pos - ball_pos).dot(ball_vel) / v2).clamp(0f32, 1.5f32);
+  ball_pos + ball_vel.scale(t)
+}
+
+#[inline]
+fn acquisition_speed(command_speed: Option<u32>) -> u16 {
+  command_speed.unwrap_or(500).clamp(500, 900) as u16
 }

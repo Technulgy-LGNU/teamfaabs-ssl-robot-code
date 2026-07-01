@@ -67,19 +67,12 @@ impl<C> Robot<C> {
           self.packets.cp_data.cmd.orientation.unwrap_or_default() as u16;
       }
       CpTask::TaskKick => {
-        // Kick in kick dir
-        // First rotate robot
-        if (self.packets.robot_self.orientation
-          - self.packets.cp_data.cmd.kick_orient.unwrap_or_default() as i32)
-          .abs()
-          > 10
-        {
-          // If we are facing the right direction (variance of five degrees)
-          self.packets.robot_msg.orient =
-            self.packets.cp_data.cmd.kick_orient.unwrap_or_default() as u16;
+        let kick_orient = self.packets.cp_data.cmd.kick_orient.unwrap_or_default() as u16;
+        let kick_power = self.packets.cp_data.cmd.kick_speed.unwrap_or_default();
+        if heading_error_deg(self.packets.robot_self.orientation, kick_orient as i32) > 10 {
+          self.packets.robot_msg.orient = kick_orient;
         } else {
-          self.packets.robot_msg.kick_pwr =
-            self.packets.cp_data.cmd.kick_speed.unwrap_or_default() as u8;
+          self.packets.robot_msg.kick_pwr = kick_power as u8;
           self.packets.robot_msg.set_flag(send_flags::KICK);
         }
 
@@ -91,10 +84,10 @@ impl<C> Robot<C> {
       CpTask::TaskChip => {
         // Chip in kick dir
         // First rotate robot
-        if (self.packets.robot_self.orientation
-          - self.packets.cp_data.cmd.kick_orient.unwrap_or_default() as i32)
-          .abs()
-          > 5
+        if heading_error_deg(
+          self.packets.robot_self.orientation,
+          self.packets.cp_data.cmd.kick_orient.unwrap_or_default() as i32,
+        ) > 5
         {
           // If we are facing the right direction (variance of five degrees)
           self.packets.robot_msg.orient =
@@ -113,6 +106,11 @@ impl<C> Robot<C> {
       CpTask::TaskRecKick => {
         has_kicked = false;
         // Rec Kick
+        // Pre-spin while receiving so the ball is already captured when it
+        // reaches the mouth instead of bouncing before IR latches.
+        self.packets.robot_msg.set_flag(send_flags::DRIBBLER);
+        self.packets.robot_msg.dribbler_pwr = 200;
+
         if self.packets.teensy_data.has_ball() {
           self.packets.robot_msg.speed = 0;
         } else {
@@ -127,10 +125,6 @@ impl<C> Robot<C> {
           // Keep looking at the ball while moving.
           self.packets.robot_msg.orient = (ball_pos - robot_pos).angle_to_u16();
         }
-
-        // Always enable dribbler
-        self.packets.robot_msg.set_flag(send_flags::DRIBBLER);
-        self.packets.robot_msg.dribbler_pwr = 200;
       }
       CpTask::TaskSteal => {
         has_kicked = false;
@@ -210,5 +204,22 @@ impl<C> Robot<C> {
         // Free kick
       }
     }
+  }
+}
+
+fn heading_error_deg(current: i32, target: i32) -> i32 {
+  let error = (target - current + 180).rem_euclid(360) - 180;
+  error.abs()
+}
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  #[test]
+  fn heading_error_wraps_around_zero() {
+    assert_eq!(heading_error_deg(359, 1), 2);
+    assert_eq!(heading_error_deg(1, 359), 2);
+    assert_eq!(heading_error_deg(10, 350), 20);
   }
 }
