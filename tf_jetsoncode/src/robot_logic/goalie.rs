@@ -70,6 +70,11 @@ impl<C> Robot<C> {
         let to_target = target.pos - self_pos;
         let pass_angle = to_target.angle_to_u16();
         self.packets.robot_msg.orient = pass_angle;
+        if heading_error_deg(self.packets.robot_self.orientation, pass_angle as i32) <= 10 {
+          let pass_dist = to_target.norm();
+          self.packets.robot_msg.kick_pwr = (pass_dist * 0.06).clamp(90f32, 200f32) as u8;
+          self.packets.robot_msg.set_flag(send_flags::KICK);
+        }
       } else {
         self.packets.robot_msg.orient = (Vec2f::new(0f32, 0f32) - self_pos).angle_to_u16();
       }
@@ -268,9 +273,9 @@ fn predict_carrier_shot(
 #[inline]
 fn opponent_carrier(cp_data: &CpRobot, ball_pos: Vec2f) -> Option<CpTrackedRobot> {
   let opponents = if cp_data.infos.team_color {
-    &cp_data.robots_blue
-  } else {
     &cp_data.robots_yellow
+  } else {
+    &cp_data.robots_blue
   };
 
   opponents
@@ -293,14 +298,14 @@ fn opponent_carrier(cp_data: &CpRobot, ball_pos: Vec2f) -> Option<CpTrackedRobot
 #[inline]
 fn goalie_pass_target(cp_data: &CpRobot, self_pos: Vec2f) -> Option<GoaliePassTarget> {
   let own = if cp_data.infos.team_color {
-    &cp_data.robots_yellow
-  } else {
     &cp_data.robots_blue
+  } else {
+    &cp_data.robots_yellow
   };
   let opponents = if cp_data.infos.team_color {
-    &cp_data.robots_blue
-  } else {
     &cp_data.robots_yellow
+  } else {
+    &cp_data.robots_blue
   };
   let goal_side = own_goal_side(&cp_data.infos);
   let penalty_front_x =
@@ -432,6 +437,12 @@ fn heading_dir(heading_deg: f32) -> Vec2f {
 #[inline]
 fn angle_delta_deg(current: f32, previous: f32) -> f32 {
   (current - previous + 180f32).rem_euclid(360f32) - 180f32
+}
+
+#[inline]
+fn heading_error_deg(current: i32, target: i32) -> i32 {
+  let error = (target - current + 180).rem_euclid(360) - 180;
+  error.abs()
 }
 
 #[inline]

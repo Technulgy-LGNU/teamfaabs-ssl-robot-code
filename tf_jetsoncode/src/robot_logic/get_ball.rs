@@ -6,6 +6,9 @@ use crate::robot_logic::vec::{Vec2f, Vec2i};
 
 /// Distance to ball where we switch to direct control
 const BALL_APPROACH_DISTANCE: f32 = 150f32;
+/// Approximate distance from robot center to the dribbler/kicker contact point.
+const PICKUP_CENTER_OFFSET_MM: f32 = 80f32;
+const RAW_PICKUP_STOP_RADIUS_MM: f32 = 20f32;
 /// Close acquisition should not be softened by ORCA. At this range the robot
 /// has been tactically selected to win the ball, so drive directly into pickup.
 const RAW_ACQUIRE_DISTANCE: f32 = 900f32;
@@ -107,9 +110,14 @@ impl<C> Robot<C> {
 
   #[inline]
   fn raw_acquire_towards(&mut self, robot_pos: Vec2f, target: Vec2f, face: Vec2f) {
+    let target = pickup_center_target(
+      robot_pos,
+      target,
+      self.packets.robot_self.orientation as f32,
+    );
     let delta = target - robot_pos;
     let dist = delta.norm();
-    if dist <= 1f32 {
+    if dist <= RAW_PICKUP_STOP_RADIUS_MM {
       self.packets.robot_msg.speed = 0;
     } else {
       self.packets.robot_msg.dir = delta.angle_to_u16();
@@ -118,6 +126,20 @@ impl<C> Robot<C> {
     }
     self.packets.robot_msg.orient = (face - robot_pos).angle_to_u16();
   }
+}
+
+#[inline]
+fn pickup_center_target(robot_pos: Vec2f, ball_pos: Vec2f, fallback_orientation_deg: f32) -> Vec2f {
+  let to_ball = ball_pos - robot_pos;
+  let ball_dir = if to_ball.norm() > 1f32 {
+    to_ball.normalized()
+  } else {
+    Vec2f::new(
+      fallback_orientation_deg.to_radians().cos(),
+      fallback_orientation_deg.to_radians().sin(),
+    )
+  };
+  ball_pos - ball_dir.scale(PICKUP_CENTER_OFFSET_MM)
 }
 
 #[inline]
@@ -160,6 +182,33 @@ fn acquisition_speed(command_speed: Option<u32>) -> u16 {
 
 #[inline]
 fn raw_acquisition_speed(dist_mm: f32, command_speed: u32) -> u16 {
-  let requested = command_speed.max(1600) as f32;
-  (dist_mm * 4.0).clamp(450f32, requested.min(2200f32)) as u16
+  let requested = command_speed.max(1400) as f32;
+  (dist_mm * 4.0).clamp(250f32, requested.min(1800f32)) as u16
+}
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  #[test]
+  fn close_acquire_targets_dribbler_contact_not_ball_center() {
+    let robot = Vec2f::new(0f32, 0f32);
+    let ball = Vec2f::new(200f32, 0f32);
+
+    let target = pickup_center_target(robot, ball, 0f32);
+
+    assert!((target.x - 120f32).abs() < 1e-3);
+    assert!(target.y.abs() < 1e-3);
+  }
+
+  #[test]
+  fn close_acquire_uses_heading_when_center_overlaps_ball() {
+    let robot = Vec2f::new(100f32, 100f32);
+    let ball = robot;
+
+    let target = pickup_center_target(robot, ball, 90f32);
+
+    assert!((target.x - 100f32).abs() < 1e-3);
+    assert!((target.y - 20f32).abs() < 1e-3);
+  }
 }

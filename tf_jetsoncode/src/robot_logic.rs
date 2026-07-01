@@ -18,6 +18,9 @@ pub mod vec;
 pub(crate) const RAW_STOP_RADIUS_MM: f32 = 40f32;
 // Maximum translational speed for raw goalie movement inside the penalty area.
 pub(crate) const RAW_MAX_SPEED_MM_S: f32 = 4_000f32;
+const DRIBBLER_PRESPIN_RANGE_MM: f32 = 180f32;
+const KICK_HEADING_TOLERANCE_DEG: i32 = 3;
+const CHIP_HEADING_TOLERANCE_DEG: i32 = 5;
 
 impl<C> Robot<C> {
   #[inline]
@@ -27,6 +30,11 @@ impl<C> Robot<C> {
     let ball_pos = Vec2f::new_from_cp(self.packets.cp_data.ball.pos);
     let ball_vel = Vec2f::new_from_cp(self.packets.cp_data.ball.vel.unwrap_or_default());
     let mut has_kicked: bool = false;
+
+    if !stop && should_prespin_dribbler(robot_pos, ball_pos) {
+      self.packets.robot_msg.set_flag(send_flags::DRIBBLER);
+      self.packets.robot_msg.dribbler_pwr = 200;
+    }
 
     match CpTask::try_from(self.packets.cp_data.cmd.task).unwrap_or(CpTask::TaskUnspecified) {
       CpTask::TaskUnspecified => {
@@ -69,9 +77,10 @@ impl<C> Robot<C> {
       CpTask::TaskKick => {
         let kick_orient = self.packets.cp_data.cmd.kick_orient.unwrap_or_default() as u16;
         let kick_power = self.packets.cp_data.cmd.kick_speed.unwrap_or_default();
-        if heading_error_deg(self.packets.robot_self.orientation, kick_orient as i32) > 10 {
-          self.packets.robot_msg.orient = kick_orient;
-        } else {
+        self.packets.robot_msg.orient = kick_orient;
+        if heading_error_deg(self.packets.robot_self.orientation, kick_orient as i32)
+          <= KICK_HEADING_TOLERANCE_DEG
+        {
           self.packets.robot_msg.kick_pwr = kick_power as u8;
           self.packets.robot_msg.set_flag(send_flags::KICK);
         }
@@ -87,7 +96,7 @@ impl<C> Robot<C> {
         if heading_error_deg(
           self.packets.robot_self.orientation,
           self.packets.cp_data.cmd.kick_orient.unwrap_or_default() as i32,
-        ) > 5
+        ) > CHIP_HEADING_TOLERANCE_DEG
         {
           // If we are facing the right direction (variance of five degrees)
           self.packets.robot_msg.orient =
@@ -212,6 +221,11 @@ fn heading_error_deg(current: i32, target: i32) -> i32 {
   error.abs()
 }
 
+#[inline]
+fn should_prespin_dribbler(robot_pos: Vec2f, ball_pos: Vec2f) -> bool {
+  (ball_pos - robot_pos).norm_squared() <= DRIBBLER_PRESPIN_RANGE_MM * DRIBBLER_PRESPIN_RANGE_MM
+}
+
 #[cfg(test)]
 mod tests {
   use super::*;
@@ -221,5 +235,22 @@ mod tests {
     assert_eq!(heading_error_deg(359, 1), 2);
     assert_eq!(heading_error_deg(1, 359), 2);
     assert_eq!(heading_error_deg(10, 350), 20);
+  }
+
+  #[test]
+  fn kick_heading_tolerance_is_tight_enough_for_goal_shots() {
+    assert!(KICK_HEADING_TOLERANCE_DEG <= 3);
+  }
+
+  #[test]
+  fn prespins_dribbler_inside_near_ball_range() {
+    assert!(should_prespin_dribbler(
+      Vec2f::new(0f32, 0f32),
+      Vec2f::new(180f32, 0f32),
+    ));
+    assert!(!should_prespin_dribbler(
+      Vec2f::new(0f32, 0f32),
+      Vec2f::new(181f32, 0f32),
+    ));
   }
 }

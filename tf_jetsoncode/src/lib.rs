@@ -174,7 +174,7 @@ impl<C> Robot<C> {
     }
 
     // Self
-    if self.packets.cp_data.infos.team_color {
+    if !self.packets.cp_data.infos.team_color {
       self.packets.robot_self = *self
         .packets
         .cp_data
@@ -182,7 +182,7 @@ impl<C> Robot<C> {
         .iter()
         .find(|r| r.robot_id == self.config.robot_id as u32)
         .unwrap_or(&self.packets.robot_self);
-    } else {
+    } else if self.packets.cp_data.infos.team_color {
       self.packets.robot_self = *self
         .packets
         .cp_data
@@ -190,6 +190,8 @@ impl<C> Robot<C> {
         .iter()
         .find(|r| r.robot_id == self.config.robot_id as u32)
         .unwrap_or(&self.packets.robot_self);
+    } else {
+      panic!("Unknown team: {}", self.packets.cp_data.infos.team_color);
     }
   }
 
