@@ -1,4 +1,3 @@
-use crate::Robot;
 use crate::communication::send_flags;
 use crate::robot_logic::RAW_MAX_SPEED_MM_S;
 use crate::robot_logic::helpers::{
@@ -6,7 +5,8 @@ use crate::robot_logic::helpers::{
 };
 use crate::robot_logic::orca::{NavIntent, OrcaRequest, WorldSnapshot, nav_command_to_teensy};
 use crate::robot_logic::vec::{Vec2f, Vec2i};
-use core_dump::proto::CpInfos;
+use crate::{GoalieCarrierTrack, Robot};
+use core_dump::proto::{CpInfos, CpRobot, CpTrackedRobot};
 
 // How far the goalie should stay in front of the goal line when guarding.
 const GOAL_LINE_MARGIN_MM: f32 = 120f32;
@@ -16,8 +16,28 @@ const SHOT_LOOKAHEAD_S: f32 = 4f32;
 const SHOT_Y_MARGIN_MM: f32 = 10_000f32;
 // Only run the dribbler when the ball is close enough to be collected.
 const DRIBBLER_RANGE_MM: f32 = 150f32;
+// If the ball is in or just leaving our defense area, actively collect it.
+const CATCH_BALL_RANGE_MM: f32 = 520f32;
+const CATCH_BALL_SPEED_MM_S: f32 = 60f32;
+const CATCH_LEAD_S: f32 = 0.25;
+const CATCH_FIELD_EXIT_MARGIN_MM: f32 = 260f32;
 // Keeps the goalie inside the goal opening instead of hugging the exact edge.
 const GUARD_Y_MARGIN_MM: f32 = 20f32;
+// Opponent center distance to the ball that is treated as active possession.
+const OPPONENT_HAS_BALL_DIST_MM: f32 = 180f32;
+// Opponent must be at least this aligned with the vector to our goal.
+const CARRIER_HEADING_TO_GOAL_DOT: f32 = 0.45;
+// How far ahead to extrapolate a still-turning carrier's heading.
+const CARRIER_ANGULAR_LEAD_S: f32 = 0.18;
+// Above this turn rate, keep the prediction to only 10% outside the goal width.
+const CARRIER_SETTLED_ANGULAR_DEG_S: f32 = 45f32;
+const TURNING_EXTRA_GOAL_WIDTH: f32 = 0.10;
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+struct CarrierShotPrediction {
+  goal_y: f32,
+  guard_y: f32,
+}
 
 impl<C> Robot<C> {
   #[inline]
@@ -36,14 +56,46 @@ impl<C> Robot<C> {
       .vel
       .map_or(Vec2f::new(0f32, 0f32), Vec2f::new_from_cp);
 
-    // Always face the ball globally, independent of the movement direction.
-    self.packets.robot_msg.orient = (ball_pos - self_pos).angle_to_u16();
-    if should_run_goalie_dribbler(self_pos, ball_pos, ball_vel) {
+    if self.packets.teensy_data.has_ball() {
+      self.packets.robot_msg.speed = 0;
       self.packets.robot_msg.set_flag(send_flags::DRIBBLER);
+      self.packets.robot_msg.dribbler_pwr = 200;
+      if let Some(target) = goalie_pass_target(&self.packets.cp_data, self_pos) {
+        let to_target = target - self_pos;
+        let pass_angle = to_target.angle_to_u16();
+        self.packets.robot_msg.orient = pass_angle;
+        if heading_error_deg(self.packets.robot_self.orientation, pass_angle as i32) <= 10 {
+          let pass_dist = to_target.norm();
+          self.packets.robot_msg.kick_pwr = (pass_dist * 0.06).clamp(90f32, 200f32) as u8;
+          self.packets.robot_msg.set_flag(send_flags::KICK);
+        }
+      } else {
+        self.packets.robot_msg.orient = (Vec2f::new(0f32, 0f32) - self_pos).angle_to_u16();
+      }
+      return;
     }
 
+    // Always face the ball globally, independent of the movement direction.
+    self.packets.robot_msg.orient = (ball_pos - self_pos).angle_to_u16();
+    if should_preempt_goalie_dribbler(&self.packets.cp_data.infos, self_pos, ball_pos, ball_vel) {
+      self.packets.robot_msg.set_flag(send_flags::DRIBBLER);
+      self.packets.robot_msg.dribbler_pwr = 200;
+    }
+
+    let carrier_prediction = predict_carrier_shot(
+      &self.packets.cp_data,
+      ball_pos,
+      &mut self.goalie_carrier_track,
+    );
+
     // Choose a defensive target: either a predicted interception point or a guard point.
-    let target = goalie_target(&self.packets.cp_data.infos, self_pos, ball_pos, ball_vel);
+    let target = goalie_target(
+      &self.packets.cp_data.infos,
+      self_pos,
+      ball_pos,
+      ball_vel,
+      carrier_prediction,
+    );
 
     if inside_own_penalty_area(&self.packets.cp_data.infos, self_pos) {
       // Once inside the penalty area, use raw field-global motion instead of ORCA.
@@ -73,6 +125,79 @@ fn should_run_goalie_dribbler(self_pos: Vec2f, ball_pos: Vec2f, ball_vel: Vec2f)
 }
 
 #[inline]
+fn should_preempt_goalie_dribbler(
+  infos: &CpInfos, self_pos: Vec2f, ball_pos: Vec2f, ball_vel: Vec2f,
+) -> bool {
+  if should_run_goalie_dribbler(self_pos, ball_pos, ball_vel) {
+    return true;
+  }
+
+  let ball_dist_sq = (ball_pos - self_pos).norm_squared();
+  if ball_dist_sq <= CATCH_BALL_RANGE_MM * CATCH_BALL_RANGE_MM
+    && (inside_own_penalty_area(infos, ball_pos)
+      || ball_is_exiting_own_penalty(infos, ball_pos, ball_vel))
+  {
+    return true;
+  }
+
+  predict_intercept(infos, self_pos, ball_pos, ball_vel).is_some()
+}
+
+#[inline]
+fn should_collect_goalie_ball(
+  infos: &CpInfos, self_pos: Vec2f, ball_pos: Vec2f, ball_vel: Vec2f,
+) -> bool {
+  if (ball_pos - self_pos).norm_squared() > CATCH_BALL_RANGE_MM * CATCH_BALL_RANGE_MM {
+    return false;
+  }
+  if ball_vel.norm_squared() < CATCH_BALL_SPEED_MM_S * CATCH_BALL_SPEED_MM_S {
+    return false;
+  }
+
+  inside_own_penalty_area(infos, ball_pos) || ball_is_exiting_own_penalty(infos, ball_pos, ball_vel)
+}
+
+#[inline]
+fn ball_is_exiting_own_penalty(infos: &CpInfos, ball_pos: Vec2f, ball_vel: Vec2f) -> bool {
+  let goal_x = own_goal_x(infos);
+  let goal_side = own_goal_side(infos);
+  let penalty_depth = infos.penalty_area_height as f32;
+  let penalty_outer_x = goal_x - goal_side * penalty_depth;
+  let y_half = infos.penalty_area_width as f32 * 0.5 + 120f32;
+  let field_side_speed = ball_vel.x * -goal_side;
+  let past_front = (ball_pos.x - penalty_outer_x) * -goal_side;
+
+  ball_pos.y.abs() <= y_half
+    && field_side_speed > CATCH_BALL_SPEED_MM_S
+    && (-80f32..=CATCH_FIELD_EXIT_MARGIN_MM).contains(&past_front)
+}
+
+#[inline]
+fn goalie_collect_target(infos: &CpInfos, ball_pos: Vec2f, ball_vel: Vec2f) -> Vec2f {
+  let speed = ball_vel.norm();
+  let lead = if speed > CATCH_BALL_SPEED_MM_S {
+    ball_vel * CATCH_LEAD_S
+  } else {
+    Vec2f::new(0f32, 0f32)
+  };
+  clamp_to_goalie_collect_area(infos, ball_pos + lead)
+}
+
+#[inline]
+fn clamp_to_goalie_collect_area(infos: &CpInfos, point: Vec2f) -> Vec2f {
+  let goal_x = own_goal_x(infos);
+  let goal_side = own_goal_side(infos);
+  let penalty_depth = infos.penalty_area_height as f32;
+  let penalty_outer_x = goal_x - goal_side * penalty_depth;
+  let field_exit_x = penalty_outer_x - goal_side * CATCH_FIELD_EXIT_MARGIN_MM;
+  let x_min = goal_x.min(field_exit_x) + 40f32;
+  let x_max = goal_x.max(field_exit_x) - 40f32;
+  let y_half = infos.penalty_area_width as f32 * 0.5 - 40f32;
+
+  Vec2f::new(point.x.clamp(x_min, x_max), point.y.clamp(-y_half, y_half))
+}
+
+#[inline]
 fn goalie_move_towards(
   msg: &mut crate::communication::TeensySendMsg, self_pos: Vec2f, self_vel: Vec2f, target: Vec2f,
 ) {
@@ -95,22 +220,32 @@ fn goalie_move_towards(
 }
 
 #[inline]
-fn goalie_target(infos: &CpInfos, self_pos: Vec2f, ball_pos: Vec2f, ball_vel: Vec2f) -> Vec2f {
+fn goalie_target(
+  infos: &CpInfos, self_pos: Vec2f, ball_pos: Vec2f, ball_vel: Vec2f,
+  carrier_prediction: Option<CarrierShotPrediction>,
+) -> Vec2f {
   // Own goal is on x- or x+ depending on the robot_goal setting.
   let goal_x = own_goal_x(infos);
   let goal_side = own_goal_side(infos);
   // Clamp to the goal width, allowing roughly one robot radius beyond each post.
   let goal_half_width = infos.goal_width as f32 * 0.5 + 90f32;
+  let goal_guard_x = goal_x - goal_side * GOAL_LINE_MARGIN_MM;
 
   // If the ball is moving toward goal fast enough, try to intercept it.
   if let Some(intercept) = predict_intercept(infos, self_pos, ball_pos, ball_vel) {
     return clamp_to_own_penalty(infos, intercept);
   }
 
+  if should_collect_goalie_ball(infos, self_pos, ball_pos, ball_vel) {
+    return goalie_collect_target(infos, ball_pos, ball_vel);
+  }
+
+  if let Some(prediction) = carrier_prediction {
+    return clamp_to_own_penalty(infos, Vec2f::new(goal_guard_x, prediction.guard_y));
+  }
+
   // No imminent shot: hug the goal line and slide laterally to stay between the
   // ball and the centre of the goal.
-  let goal_guard_x = goal_x - goal_side * GOAL_LINE_MARGIN_MM;
-
   Vec2f::new(
     goal_guard_x,
     ball_pos.y.clamp(
@@ -118,6 +253,181 @@ fn goalie_target(infos: &CpInfos, self_pos: Vec2f, ball_pos: Vec2f, ball_vel: Ve
       goal_half_width - GUARD_Y_MARGIN_MM,
     ),
   )
+}
+
+#[inline]
+fn predict_carrier_shot(
+  cp_data: &CpRobot, ball_pos: Vec2f, track: &mut Option<GoalieCarrierTrack>,
+) -> Option<CarrierShotPrediction> {
+  let carrier = opponent_carrier(cp_data, ball_pos)?;
+  let angular_vel_deg_s = estimate_carrier_angular_velocity(cp_data, carrier, track);
+  predict_carrier_shot_from_state(&cp_data.infos, carrier, angular_vel_deg_s)
+}
+
+#[inline]
+fn opponent_carrier(cp_data: &CpRobot, ball_pos: Vec2f) -> Option<CpTrackedRobot> {
+  let opponents = if cp_data.infos.team_color {
+    &cp_data.robots_yellow
+  } else {
+    &cp_data.robots_blue
+  };
+
+  opponents
+    .iter()
+    .copied()
+    .filter(|robot| robot.visibility > 20)
+    .filter(|robot| {
+      (Vec2f::new_from_cp(robot.pos) - ball_pos).norm_squared()
+        <= OPPONENT_HAS_BALL_DIST_MM * OPPONENT_HAS_BALL_DIST_MM
+    })
+    .min_by(|a, b| {
+      let a_dist = (Vec2f::new_from_cp(a.pos) - ball_pos).norm_squared();
+      let b_dist = (Vec2f::new_from_cp(b.pos) - ball_pos).norm_squared();
+      a_dist
+        .partial_cmp(&b_dist)
+        .unwrap_or(std::cmp::Ordering::Equal)
+    })
+}
+
+#[inline]
+fn goalie_pass_target(cp_data: &CpRobot, self_pos: Vec2f) -> Option<Vec2f> {
+  let own = if cp_data.infos.team_color {
+    &cp_data.robots_blue
+  } else {
+    &cp_data.robots_yellow
+  };
+  let opponents = if cp_data.infos.team_color {
+    &cp_data.robots_yellow
+  } else {
+    &cp_data.robots_blue
+  };
+  let goal_side = own_goal_side(&cp_data.infos);
+  let penalty_front_x =
+    own_goal_x(&cp_data.infos) - goal_side * cp_data.infos.penalty_area_height as f32;
+
+  own
+    .iter()
+    .filter(|robot| robot.robot_id != cp_data.robot_id)
+    .filter(|robot| robot.visibility > 20)
+    .map(|robot| Vec2f::new_from_cp(robot.pos))
+    .filter(|pos| !inside_own_penalty_area(&cp_data.infos, *pos))
+    .filter(|pos| (*pos - self_pos).norm() > 700f32)
+    .map(|pos| {
+      let field_side = ((pos.x - penalty_front_x) * -goal_side).max(0f32);
+      let central = (cp_data.infos.height as f32 * 0.5 - pos.y.abs()).max(0f32) * 0.05;
+      let distance = (pos - self_pos).norm();
+      let nearest_opp = opponents
+        .iter()
+        .filter(|robot| robot.visibility > 20)
+        .map(|robot| (Vec2f::new_from_cp(robot.pos) - pos).norm())
+        .fold(f32::INFINITY, f32::min);
+      let score = field_side * 0.55 + nearest_opp.min(1800f32) * 0.35 + central - distance * 0.08;
+      (pos, score)
+    })
+    .max_by(|(_, a), (_, b)| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal))
+    .map(|(pos, _)| pos)
+}
+
+#[inline]
+fn estimate_carrier_angular_velocity(
+  cp_data: &CpRobot, carrier: CpTrackedRobot, track: &mut Option<GoalieCarrierTrack>,
+) -> f32 {
+  let heading_deg = carrier.orientation as f32;
+  let timestamp_s = cp_data.timestamp;
+  let angular_vel = track
+    .and_then(|previous| {
+      if previous.robot_id != carrier.robot_id {
+        return None;
+      }
+      let dt = timestamp_s - previous.timestamp_s;
+      if !(0.005..=0.5).contains(&dt) {
+        return None;
+      }
+      Some(angle_delta_deg(heading_deg, previous.heading_deg) / dt as f32)
+    })
+    .unwrap_or(0f32);
+
+  *track = Some(GoalieCarrierTrack {
+    robot_id: carrier.robot_id,
+    heading_deg,
+    timestamp_s,
+  });
+  angular_vel
+}
+
+#[inline]
+fn predict_carrier_shot_from_state(
+  infos: &CpInfos, carrier: CpTrackedRobot, angular_vel_deg_s: f32,
+) -> Option<CarrierShotPrediction> {
+  let carrier_pos = Vec2f::new_from_cp(carrier.pos);
+  let goal_x = own_goal_x(infos);
+  let goal_side = own_goal_side(infos);
+  let goal = Vec2f::new(goal_x, 0f32);
+  let current_dir = heading_dir(carrier.orientation as f32);
+  let to_goal = (goal - carrier_pos).normalized();
+
+  if current_dir.dot(to_goal) < CARRIER_HEADING_TO_GOAL_DOT {
+    return None;
+  }
+
+  let current_goal_y = project_y_at_x(carrier_pos, current_dir, goal_x)?;
+  let lead_heading = carrier.orientation as f32 + angular_vel_deg_s * CARRIER_ANGULAR_LEAD_S;
+  let led_goal_y =
+    project_y_at_x(carrier_pos, heading_dir(lead_heading), goal_x).unwrap_or(current_goal_y);
+  let goal_y = clamp_carrier_goal_y(infos, led_goal_y, angular_vel_deg_s);
+  let guard_x = goal_x - goal_side * GOAL_LINE_MARGIN_MM;
+  let guard_y = project_guard_y_from_goal_y(carrier_pos, goal_x, guard_x, goal_y);
+
+  Some(CarrierShotPrediction { goal_y, guard_y })
+}
+
+#[inline]
+fn clamp_carrier_goal_y(infos: &CpInfos, goal_y: f32, angular_vel_deg_s: f32) -> f32 {
+  let goal_width = infos.goal_width as f32;
+  let goal_half_width = goal_width * 0.5;
+  let turning_limit = goal_half_width + goal_width * TURNING_EXTRA_GOAL_WIDTH;
+  let settled_limit = (infos.penalty_area_width as f32 * 0.5 - 60f32).max(turning_limit);
+  let settled = 1f32 - (angular_vel_deg_s.abs() / CARRIER_SETTLED_ANGULAR_DEG_S).clamp(0f32, 1f32);
+  let limit = turning_limit + (settled_limit - turning_limit) * settled;
+  goal_y.clamp(-limit, limit)
+}
+
+#[inline]
+fn project_y_at_x(origin: Vec2f, dir: Vec2f, x: f32) -> Option<f32> {
+  if dir.x.abs() <= 1e-5 {
+    return None;
+  }
+
+  let t = (x - origin.x) / dir.x;
+  (t.is_finite() && t > 0f32).then_some(origin.y + dir.y * t)
+}
+
+#[inline]
+fn project_guard_y_from_goal_y(carrier_pos: Vec2f, goal_x: f32, guard_x: f32, goal_y: f32) -> f32 {
+  let total_x = goal_x - carrier_pos.x;
+  if total_x.abs() <= 1e-5 {
+    return goal_y;
+  }
+
+  let t = ((guard_x - carrier_pos.x) / total_x).clamp(0f32, 1f32);
+  carrier_pos.y + (goal_y - carrier_pos.y) * t
+}
+
+#[inline]
+fn heading_dir(heading_deg: f32) -> Vec2f {
+  let radians = heading_deg.to_radians();
+  Vec2f::new(radians.cos(), radians.sin())
+}
+
+#[inline]
+fn angle_delta_deg(current: f32, previous: f32) -> f32 {
+  (current - previous + 180f32).rem_euclid(360f32) - 180f32
+}
+
+#[inline]
+fn heading_error_deg(current: i32, target: i32) -> i32 {
+  let error = (target - current + 180).rem_euclid(360) - 180;
+  error.abs()
 }
 
 #[inline]
@@ -175,4 +485,134 @@ pub(crate) fn predict_intercept(
   target.y = target.y.clamp(-y_half, y_half);
 
   Some(target)
+}
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+  use core_dump::proto::CpVector2;
+
+  fn infos() -> CpInfos {
+    CpInfos {
+      team_color: true,
+      width: 9000,
+      height: 6000,
+      goal_width: 1000,
+      penalty_area_width: 2000,
+      penalty_area_height: 1000,
+      team_site: true,
+      ..Default::default()
+    }
+  }
+
+  fn robot(id: u32, x: i32, y: i32, heading_deg: i32) -> CpTrackedRobot {
+    CpTrackedRobot {
+      robot_id: id,
+      pos: CpVector2 { x, y },
+      orientation: heading_deg,
+      vel: None,
+      visibility: 255,
+    }
+  }
+
+  fn cp_robot() -> CpRobot {
+    CpRobot {
+      robot_id: 0,
+      infos: infos(),
+      ..Default::default()
+    }
+  }
+
+  #[test]
+  fn turning_carrier_prediction_stays_within_ten_percent_goal_width() {
+    let infos = infos();
+    let carrier = robot(1, -1500, 0, 180);
+
+    let prediction = predict_carrier_shot_from_state(&infos, carrier, 300f32).unwrap();
+
+    let turning_limit =
+      infos.goal_width as f32 * 0.5 + infos.goal_width as f32 * TURNING_EXTRA_GOAL_WIDTH;
+    assert!(prediction.goal_y.abs() <= turning_limit + 1e-3);
+  }
+
+  #[test]
+  fn settled_carrier_prediction_can_move_past_ten_percent_goal_width() {
+    let infos = infos();
+    let carrier = robot(1, -1500, 0, 166);
+
+    let prediction = predict_carrier_shot_from_state(&infos, carrier, 0f32).unwrap();
+
+    let turning_limit =
+      infos.goal_width as f32 * 0.5 + infos.goal_width as f32 * TURNING_EXTRA_GOAL_WIDTH;
+    let settled_limit = infos.penalty_area_width as f32 * 0.5 - 60f32;
+    assert!(prediction.goal_y.abs() > turning_limit);
+    assert!(prediction.goal_y.abs() <= settled_limit);
+  }
+
+  #[test]
+  fn carrier_heading_delta_wraps_around_zero() {
+    assert_eq!(angle_delta_deg(2f32, 358f32), 4f32);
+    assert_eq!(angle_delta_deg(358f32, 2f32), -4f32);
+  }
+
+  #[test]
+  fn goalie_collects_ball_rolling_out_of_defense_area() {
+    let infos = infos();
+    let self_pos = Vec2f::new(-3850f32, 0f32);
+    let ball_pos = Vec2f::new(-3420f32, 0f32);
+    let ball_vel = Vec2f::new(300f32, 0f32);
+
+    assert!(ball_is_exiting_own_penalty(&infos, ball_pos, ball_vel));
+    assert!(should_collect_goalie_ball(
+      &infos, self_pos, ball_pos, ball_vel
+    ));
+
+    let target = goalie_collect_target(&infos, ball_pos, ball_vel);
+    assert!(target.x > -3500f32);
+    assert!(target.x <= -3240f32 + 1e-3);
+  }
+
+  #[test]
+  fn goalie_preemptively_runs_dribbler_for_slow_defense_ball() {
+    let infos = infos();
+    let self_pos = Vec2f::new(-3850f32, 0f32);
+    let ball_pos = Vec2f::new(-3750f32, 0f32);
+    let slow_ball = Vec2f::new(10f32, 0f32);
+
+    assert!(should_preempt_goalie_dribbler(
+      &infos, self_pos, ball_pos, slow_ball
+    ));
+    assert!(!should_collect_goalie_ball(
+      &infos, self_pos, ball_pos, slow_ball
+    ));
+  }
+
+  #[test]
+  fn goalie_preemptively_runs_dribbler_for_incoming_shot() {
+    let infos = infos();
+    let self_pos = Vec2f::new(-4200f32, 0f32);
+    let ball_pos = Vec2f::new(-1500f32, 120f32);
+    let ball_vel = Vec2f::new(-1800f32, -40f32);
+
+    assert!(predict_intercept(&infos, self_pos, ball_pos, ball_vel).is_some());
+    assert!(should_preempt_goalie_dribbler(
+      &infos, self_pos, ball_pos, ball_vel
+    ));
+  }
+
+  #[test]
+  fn goalie_pass_target_uses_teammate_outside_defense_area() {
+    let mut cp_data = cp_robot();
+    cp_data.robots_blue = vec![
+      robot(0, -4300, 0, 0),
+      robot(1, -3700, 0, 0),
+      robot(2, -2100, 650, 0),
+    ];
+    cp_data.robots_yellow = vec![robot(4, -2200, -700, 180)];
+
+    let target = goalie_pass_target(&cp_data, Vec2f::new(-4300f32, 0f32)).unwrap();
+
+    assert_eq!(target, Vec2f::new(-2100f32, 650f32));
+    assert!(!inside_own_penalty_area(&cp_data.infos, target));
+  }
 }

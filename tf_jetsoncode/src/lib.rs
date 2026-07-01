@@ -32,10 +32,18 @@ pub struct Robot<C = CommunicationChannels> {
   params: OrcaParams,
   orca: Orca,
   was_goalie: bool,
+  goalie_carrier_track: Option<GoalieCarrierTrack>,
   last_button_flags: u32,
   packets: PacketBuffer,
   cp_send_buf: Vec<u8>,
   comm: C,
+}
+
+#[derive(Debug, Clone, Copy)]
+struct GoalieCarrierTrack {
+  robot_id: u32,
+  heading_deg: f32,
+  timestamp_s: f64,
 }
 
 impl Robot {
@@ -141,6 +149,7 @@ impl<C> Robot<C> {
       orca,
       params,
       was_goalie: false,
+      goalie_carrier_track: None,
       last_button_flags: 0,
       packets: PacketBuffer::new(),
       cp_send_buf: Vec::new(),
