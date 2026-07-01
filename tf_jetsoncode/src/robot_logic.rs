@@ -1,9 +1,9 @@
-use crate::Robot;
 use crate::communication::send_flags;
 use crate::robot_logic::orca::{
   NavIntent, OrcaRequest, Vec2i, WorldSnapshot, nav_command_to_teensy,
 };
 use crate::robot_logic::vec::{Vec2f, distance_cpv_squared};
+use crate::{DribbleDistanceTrack, Robot};
 use core_dump::proto::CpTask;
 
 mod defense;
@@ -18,9 +18,10 @@ pub mod vec;
 pub(crate) const RAW_STOP_RADIUS_MM: f32 = 40f32;
 // Maximum translational speed for raw goalie movement inside the penalty area.
 pub(crate) const RAW_MAX_SPEED_MM_S: f32 = 4_000f32;
-const DRIBBLER_PRESPIN_RANGE_MM: f32 = 180f32;
 const KICK_HEADING_TOLERANCE_DEG: i32 = 3;
 const CHIP_HEADING_TOLERANCE_DEG: i32 = 5;
+const DRIBBLE_RELEASE_DISTANCE_MM: f32 = 850f32;
+const DRIBBLE_LIMIT_KICK_POWER: u8 = 120;
 
 impl<C> Robot<C> {
   #[inline]
@@ -30,11 +31,6 @@ impl<C> Robot<C> {
     let ball_pos = Vec2f::new_from_cp(self.packets.cp_data.ball.pos);
     let ball_vel = Vec2f::new_from_cp(self.packets.cp_data.ball.vel.unwrap_or_default());
     let mut has_kicked: bool = false;
-
-    if !stop && should_prespin_dribbler(robot_pos, ball_pos) {
-      self.packets.robot_msg.set_flag(send_flags::DRIBBLER);
-      self.packets.robot_msg.dribbler_pwr = 200;
-    }
 
     match CpTask::try_from(self.packets.cp_data.cmd.task).unwrap_or(CpTask::TaskUnspecified) {
       CpTask::TaskUnspecified => {
@@ -77,17 +73,18 @@ impl<C> Robot<C> {
       CpTask::TaskKick => {
         let kick_orient = self.packets.cp_data.cmd.kick_orient.unwrap_or_default() as u16;
         let kick_power = self.packets.cp_data.cmd.kick_speed.unwrap_or_default();
+        self.packets.robot_msg.set_flag(send_flags::DRIBBLER);
+        self.packets.robot_msg.dribbler_pwr = 200;
         self.packets.robot_msg.orient = kick_orient;
-        if heading_error_deg(self.packets.robot_self.orientation, kick_orient as i32)
-          <= KICK_HEADING_TOLERANCE_DEG
-        {
+        if kick_release_ready(
+          self.packets.robot_self.orientation,
+          kick_orient as i32,
+          self.packets.teensy_data.has_ball(),
+        ) {
           self.packets.robot_msg.kick_pwr = kick_power as u8;
           self.packets.robot_msg.set_flag(send_flags::KICK);
-        }
-
-        if !self.packets.teensy_data.has_ball() {
+        } else if !self.packets.teensy_data.has_ball() {
           has_kicked = true;
-          self.packets.robot_msg.clear_all_flags();
         }
       }
       CpTask::TaskChip => {
@@ -125,10 +122,14 @@ impl<C> Robot<C> {
         } else {
           if ball_vel.norm() >= 200f32 && self.receive_ball() {
             // Fast pass: intercept on its path.
-          } else {
+          } else if receive_ball::should_collect_slow_receive_ball(robot_pos, ball_pos) {
             // Slow / slightly missed pass: keep the receiving intent and collect
             // the loose ball instead of idling while an opponent takes it.
             self.collect_receive_ball(robot_pos, ball_pos);
+          } else {
+            // Pre-kick RecPass should not make the receiver leave its prepared
+            // lane and chase a stationary ball still held by the passer.
+            self.packets.robot_msg.speed = 0;
           }
 
           // Keep looking at the ball while moving.
@@ -214,6 +215,25 @@ impl<C> Robot<C> {
       }
     }
   }
+
+  pub(crate) fn enforce_dribble_distance_limit(&mut self, ball_pos: Vec2f) {
+    let active_dribble = self.packets.robot_msg.flags & send_flags::DRIBBLER != 0
+      && self.packets.teensy_data.has_ball();
+    let distance_mm =
+      update_dribble_distance_track(&mut self.dribble_distance_track, ball_pos, active_dribble);
+
+    if distance_mm < DRIBBLE_RELEASE_DISTANCE_MM {
+      return;
+    }
+
+    self.packets.robot_msg.speed = 0;
+    self.packets.robot_msg.kick_pwr = self
+      .packets
+      .robot_msg
+      .kick_pwr
+      .max(DRIBBLE_LIMIT_KICK_POWER);
+    self.packets.robot_msg.set_flag(send_flags::KICK);
+  }
 }
 
 fn heading_error_deg(current: i32, target: i32) -> i32 {
@@ -221,9 +241,32 @@ fn heading_error_deg(current: i32, target: i32) -> i32 {
   error.abs()
 }
 
-#[inline]
-fn should_prespin_dribbler(robot_pos: Vec2f, ball_pos: Vec2f) -> bool {
-  (ball_pos - robot_pos).norm_squared() <= DRIBBLER_PRESPIN_RANGE_MM * DRIBBLER_PRESPIN_RANGE_MM
+fn kick_release_ready(current: i32, target: i32, has_ball: bool) -> bool {
+  has_ball && heading_error_deg(current, target) <= KICK_HEADING_TOLERANCE_DEG
+}
+
+fn update_dribble_distance_track(
+  track: &mut Option<DribbleDistanceTrack>, ball_pos: Vec2f, active_dribble: bool,
+) -> f32 {
+  if !active_dribble {
+    *track = None;
+    return 0f32;
+  }
+
+  match track {
+    Some(track) => {
+      track.distance_mm += (ball_pos - track.last_ball_pos).norm();
+      track.last_ball_pos = ball_pos;
+      track.distance_mm
+    }
+    None => {
+      *track = Some(DribbleDistanceTrack {
+        last_ball_pos: ball_pos,
+        distance_mm: 0f32,
+      });
+      0f32
+    }
+  }
 }
 
 #[cfg(test)]
@@ -243,14 +286,40 @@ mod tests {
   }
 
   #[test]
-  fn prespins_dribbler_inside_near_ball_range() {
-    assert!(should_prespin_dribbler(
-      Vec2f::new(0f32, 0f32),
-      Vec2f::new(180f32, 0f32),
-    ));
-    assert!(!should_prespin_dribbler(
-      Vec2f::new(0f32, 0f32),
-      Vec2f::new(181f32, 0f32),
-    ));
+  fn kick_release_requires_ir_ball_possession() {
+    assert!(kick_release_ready(10, 12, true));
+    assert!(!kick_release_ready(10, 12, false));
+    assert!(!kick_release_ready(10, 20, true));
+  }
+
+  #[test]
+  fn dribble_distance_track_accumulates_ball_travel() {
+    let mut track = None;
+    assert_eq!(
+      update_dribble_distance_track(&mut track, Vec2f::new(0f32, 0f32), true),
+      0f32
+    );
+    assert_eq!(
+      update_dribble_distance_track(&mut track, Vec2f::new(300f32, 400f32), true),
+      500f32
+    );
+    assert_eq!(
+      update_dribble_distance_track(&mut track, Vec2f::new(300f32, 700f32), true),
+      800f32
+    );
+  }
+
+  #[test]
+  fn dribble_distance_track_resets_without_controlled_dribble() {
+    let mut track = None;
+    update_dribble_distance_track(&mut track, Vec2f::new(0f32, 0f32), true);
+    update_dribble_distance_track(&mut track, Vec2f::new(900f32, 0f32), true);
+    assert!(track.is_some());
+
+    assert_eq!(
+      update_dribble_distance_track(&mut track, Vec2f::new(900f32, 0f32), false),
+      0f32
+    );
+    assert!(track.is_none());
   }
 }

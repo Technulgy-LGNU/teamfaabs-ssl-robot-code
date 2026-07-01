@@ -33,6 +33,7 @@ pub struct Robot<C = CommunicationChannels> {
   orca: Orca,
   was_goalie: bool,
   goalie_carrier_track: Option<GoalieCarrierTrack>,
+  dribble_distance_track: Option<DribbleDistanceTrack>,
   last_button_flags: u32,
   packets: PacketBuffer,
   cp_send_buf: Vec<u8>,
@@ -44,6 +45,12 @@ struct GoalieCarrierTrack {
   robot_id: u32,
   heading_deg: f32,
   timestamp_s: f64,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct DribbleDistanceTrack {
+  pub(crate) last_ball_pos: Vec2f,
+  pub(crate) distance_mm: f32,
 }
 
 impl Robot {
@@ -150,6 +157,7 @@ impl<C> Robot<C> {
       params,
       was_goalie: false,
       goalie_carrier_track: None,
+      dribble_distance_track: None,
       last_button_flags: 0,
       packets: PacketBuffer::new(),
       cp_send_buf: Vec::new(),
@@ -310,6 +318,7 @@ impl<C> Robot<C> {
     self.packets.robot_msg.state = self.packets.cp_data.cmd.state as u8;
     self.packets.robot_msg.vel_x = self.packets.robot_self.vel.unwrap_or_default().x as i16;
     self.packets.robot_msg.vel_y = self.packets.robot_self.vel.unwrap_or_default().y as i16;
+    self.enforce_dribble_distance_limit(Vec2f::new_from_cp(self.packets.cp_data.ball.pos));
 
     // Do last check, if robot is out of field, if yes, stop && checks if the robot is visibly in the vision
     if outside_field(
