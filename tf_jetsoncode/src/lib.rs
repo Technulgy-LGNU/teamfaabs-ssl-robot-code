@@ -329,5 +329,71 @@ impl<C> Robot<C> {
       info!("Visibility: {:?}", self.packets.robot_self.visibility);
       self.packets.robot_msg.speed = 0;
     }
+
+    encode_shortest_turn(&mut self.packets.robot_msg);
+  }
+}
+
+fn encode_shortest_turn(msg: &mut TeensySendMsg) {
+  let current = (msg.self_orient as i32).rem_euclid(360);
+  let target = (msg.orient as i32).rem_euclid(360);
+  let delta = shortest_angle_delta_deg(current, target);
+  let offset = if current + delta < 0 { 360 } else { 0 };
+
+  msg.self_orient = (current + offset) as u16;
+  msg.orient = (current + delta + offset) as u16;
+}
+
+fn shortest_angle_delta_deg(current: i32, target: i32) -> i32 {
+  (target - current + 180).rem_euclid(360) - 180
+}
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  #[test]
+  fn shortest_turn_encoding_crosses_zero_forward() {
+    let mut msg = TeensySendMsg {
+      self_orient: 359,
+      orient: 1,
+      ..Default::default()
+    };
+
+    encode_shortest_turn(&mut msg);
+
+    assert_eq!(msg.self_orient, 359);
+    assert_eq!(msg.orient, 361);
+    assert_eq!(msg.orient as i32 - msg.self_orient as i32, 2);
+  }
+
+  #[test]
+  fn shortest_turn_encoding_crosses_zero_backward() {
+    let mut msg = TeensySendMsg {
+      self_orient: 1,
+      orient: 359,
+      ..Default::default()
+    };
+
+    encode_shortest_turn(&mut msg);
+
+    assert_eq!(msg.self_orient, 361);
+    assert_eq!(msg.orient, 359);
+    assert_eq!(msg.orient as i32 - msg.self_orient as i32, -2);
+  }
+
+  #[test]
+  fn shortest_turn_encoding_keeps_normal_turns_simple() {
+    let mut msg = TeensySendMsg {
+      self_orient: 10,
+      orient: 80,
+      ..Default::default()
+    };
+
+    encode_shortest_turn(&mut msg);
+
+    assert_eq!(msg.self_orient, 10);
+    assert_eq!(msg.orient, 80);
+    assert_eq!(msg.orient as i32 - msg.self_orient as i32, 70);
   }
 }
