@@ -45,6 +45,7 @@ struct GoalieCarrierTrack {
   robot_id: u32,
   heading_deg: f32,
   timestamp_s: f64,
+  first_seen_timestamp_s: f64,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -318,13 +319,14 @@ impl<C> Robot<C> {
     self.packets.robot_msg.state = self.packets.cp_data.cmd.state as u8;
     self.packets.robot_msg.vel_x = self.packets.robot_self.vel.unwrap_or_default().x as i16;
     self.packets.robot_msg.vel_y = self.packets.robot_self.vel.unwrap_or_default().y as i16;
-    self.enforce_dribble_distance_limit(Vec2f::new_from_cp(self.packets.cp_data.ball.pos));
+    let robot_pos = Vec2f::new_from_cp(self.packets.robot_self.pos);
+    let ball_pos = Vec2f::new_from_cp(self.packets.cp_data.ball.pos);
+    self.enable_dribbler_for_near_front_ball(robot_pos, ball_pos);
+    self.enforce_dribble_distance_limit(ball_pos);
 
     // Do last check, if robot is out of field, if yes, stop && checks if the robot is visibly in the vision
-    if outside_field(
-      &self.packets.cp_data.infos,
-      Vec2f::new_from_cp(self.packets.robot_self.pos),
-    ) || self.packets.robot_self.visibility <= 20
+    if outside_field(&self.packets.cp_data.infos, robot_pos)
+      || self.packets.robot_self.visibility <= 20
     {
       info!("Visibility: {:?}", self.packets.robot_self.visibility);
       self.packets.robot_msg.speed = 0;

@@ -33,6 +33,10 @@ const CARRIER_ANGULAR_LEAD_S: f32 = 0.18;
 // Above this turn rate, keep the prediction to only 10% outside the goal width.
 const CARRIER_SETTLED_ANGULAR_DEG_S: f32 = 45f32;
 const TURNING_EXTRA_GOAL_WIDTH: f32 = 0.10;
+const CARRIER_STABLE_POSSESSION_S: f64 = 0.30;
+const SHOT_BLOCKER_CORRIDOR_MM: f32 = 180f32;
+const SHOT_BLOCKER_MIN_FORWARD_MM: f32 = 120f32;
+const SHOT_BLOCKER_MAX_FRACTION_TO_GOAL: f32 = 0.86;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 struct CarrierShotPrediction {
@@ -266,7 +270,14 @@ fn predict_carrier_shot(
   cp_data: &CpRobot, ball_pos: Vec2f, track: &mut Option<GoalieCarrierTrack>,
 ) -> Option<CarrierShotPrediction> {
   let carrier = opponent_carrier(cp_data, ball_pos)?;
-  let angular_vel_deg_s = estimate_carrier_angular_velocity(cp_data, carrier, track);
+  let (angular_vel_deg_s, possession_time_s) =
+    estimate_carrier_angular_velocity(cp_data, carrier, track);
+  if possession_time_s < CARRIER_STABLE_POSSESSION_S {
+    return None;
+  }
+  if opponent_shot_lane_blocked(cp_data, carrier) {
+    return None;
+  }
   predict_carrier_shot_from_state(&cp_data.infos, carrier, angular_vel_deg_s)
 }
 
@@ -346,9 +357,13 @@ fn goalie_pass_target(cp_data: &CpRobot, self_pos: Vec2f) -> Option<GoaliePassTa
 #[inline]
 fn estimate_carrier_angular_velocity(
   cp_data: &CpRobot, carrier: CpTrackedRobot, track: &mut Option<GoalieCarrierTrack>,
-) -> f32 {
+) -> (f32, f64) {
   let heading_deg = carrier.orientation as f32;
   let timestamp_s = cp_data.timestamp;
+  let first_seen_timestamp_s = track
+    .filter(|previous| previous.robot_id == carrier.robot_id)
+    .map(|previous| previous.first_seen_timestamp_s)
+    .unwrap_or(timestamp_s);
   let angular_vel = track
     .and_then(|previous| {
       if previous.robot_id != carrier.robot_id {
@@ -366,8 +381,46 @@ fn estimate_carrier_angular_velocity(
     robot_id: carrier.robot_id,
     heading_deg,
     timestamp_s,
+    first_seen_timestamp_s,
   });
-  angular_vel
+  (angular_vel, timestamp_s - first_seen_timestamp_s)
+}
+
+#[inline]
+fn opponent_shot_lane_blocked(cp_data: &CpRobot, carrier: CpTrackedRobot) -> bool {
+  let carrier_pos = Vec2f::new_from_cp(carrier.pos);
+  let goal = Vec2f::new(own_goal_x(&cp_data.infos), 0f32);
+  let lane = goal - carrier_pos;
+  let lane_len = lane.norm();
+  if lane_len <= 1f32 {
+    return false;
+  }
+
+  let own = if cp_data.infos.team_color {
+    &cp_data.robots_blue
+  } else {
+    &cp_data.robots_yellow
+  };
+  let opponents = if cp_data.infos.team_color {
+    &cp_data.robots_yellow
+  } else {
+    &cp_data.robots_blue
+  };
+
+  own
+    .iter()
+    .chain(opponents.iter())
+    .copied()
+    .filter(|robot| robot.visibility > 20)
+    .filter(|robot| robot.robot_id != carrier.robot_id || robot.pos != carrier.pos)
+    .any(|robot| {
+      let blocker_pos = Vec2f::new_from_cp(robot.pos);
+      let along = (blocker_pos - carrier_pos).dot(lane) / lane_len;
+      let fraction = along / lane_len;
+      along >= SHOT_BLOCKER_MIN_FORWARD_MM
+        && fraction <= SHOT_BLOCKER_MAX_FRACTION_TO_GOAL
+        && point_segment_dist(blocker_pos, carrier_pos, goal) <= SHOT_BLOCKER_CORRIDOR_MM
+    })
 }
 
 #[inline]
@@ -426,6 +479,17 @@ fn project_guard_y_from_goal_y(carrier_pos: Vec2f, goal_x: f32, guard_x: f32, go
 
   let t = ((guard_x - carrier_pos.x) / total_x).clamp(0f32, 1f32);
   carrier_pos.y + (goal_y - carrier_pos.y) * t
+}
+
+#[inline]
+fn point_segment_dist(point: Vec2f, a: Vec2f, b: Vec2f) -> f32 {
+  let ab = b - a;
+  let len2 = ab.dot(ab);
+  if len2 <= 1e-6 {
+    return (point - a).norm();
+  }
+  let t = (point - a).dot(ab) / len2;
+  (point - (a + ab * t.clamp(0f32, 1f32))).norm()
 }
 
 #[inline]
@@ -568,6 +632,38 @@ mod tests {
   fn carrier_heading_delta_wraps_around_zero() {
     assert_eq!(angle_delta_deg(2f32, 358f32), 4f32);
     assert_eq!(angle_delta_deg(358f32, 2f32), -4f32);
+  }
+
+  #[test]
+  fn new_carrier_is_not_used_for_goalie_shot_prediction() {
+    let mut cp_data = cp_robot();
+    cp_data.timestamp = 10f64;
+    cp_data.ball.pos = CpVector2 { x: -1500, y: 0 };
+    cp_data.robots_yellow = vec![robot(1, -1500, 0, 180)];
+    let mut track = None;
+
+    let prediction = predict_carrier_shot(&cp_data, Vec2f::new(-1500f32, 0f32), &mut track);
+
+    assert_eq!(prediction, None);
+  }
+
+  #[test]
+  fn blocked_carrier_is_not_used_for_goalie_shot_prediction() {
+    let mut cp_data = cp_robot();
+    cp_data.timestamp = 10f64;
+    cp_data.ball.pos = CpVector2 { x: -1500, y: 0 };
+    cp_data.robots_blue = vec![robot(0, -2500, 0, 0)];
+    cp_data.robots_yellow = vec![robot(1, -1500, 0, 180)];
+    let mut track = Some(GoalieCarrierTrack {
+      robot_id: 1,
+      heading_deg: 180f32,
+      timestamp_s: 9.5,
+      first_seen_timestamp_s: 9.5,
+    });
+
+    let prediction = predict_carrier_shot(&cp_data, Vec2f::new(-1500f32, 0f32), &mut track);
+
+    assert_eq!(prediction, None);
   }
 
   #[test]
