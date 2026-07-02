@@ -1,17 +1,17 @@
 use crate::communication::send_flags;
-use crate::robot_logic::RAW_MAX_SPEED_MM_S;
 use crate::robot_logic::helpers::{
   clamp_to_own_penalty, inside_own_penalty_area, own_goal_side, own_goal_x,
 };
-use crate::robot_logic::orca::{NavIntent, OrcaRequest, WorldSnapshot, nav_command_to_teensy};
+use crate::robot_logic::orca::{nav_command_to_teensy, NavIntent, OrcaRequest, WorldSnapshot};
 use crate::robot_logic::vec::{Vec2f, Vec2i};
+use crate::robot_logic::RAW_MAX_SPEED_MM_S;
 use crate::{GoalieCarrierTrack, Robot};
 use core_dump::proto::{CpInfos, CpRobot, CpTrackedRobot};
 
 // How far the goalie should stay in front of the goal line when guarding.
 const GOAL_LINE_MARGIN_MM: f32 = 120f32;
 // Prediction horizon used to detect a kick/shot that is likely to reach goal.
-const SHOT_LOOKAHEAD_S: f32 = 4f32;
+const SHOT_LOOKAHEAD_S: f32 = 2f32;
 // Allowed vertical miss tolerance when deciding that a ball is heading at goal.
 const SHOT_Y_MARGIN_MM: f32 = 10_000f32;
 // Only run the dribbler when the ball is close enough to be collected.

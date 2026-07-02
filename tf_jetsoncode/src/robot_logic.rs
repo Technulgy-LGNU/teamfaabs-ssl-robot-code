@@ -1,9 +1,9 @@
 use crate::communication::send_flags;
 use crate::robot_logic::helpers::raw_move_towards;
 use crate::robot_logic::orca::{
-  NavIntent, OrcaRequest, Vec2i, WorldSnapshot, nav_command_to_teensy,
+  nav_command_to_teensy, NavIntent, OrcaRequest, Vec2i, WorldSnapshot,
 };
-use crate::robot_logic::vec::{Vec2f, distance_cpv_squared};
+use crate::robot_logic::vec::{distance_cpv_squared, Vec2f};
 use crate::{DribbleDistanceTrack, Robot};
 use core_dump::proto::CpTask;
 
@@ -18,7 +18,7 @@ pub mod vec;
 // If we are inside this distance in the penalty area, stop using raw motion.
 pub(crate) const RAW_STOP_RADIUS_MM: f32 = 40f32;
 // Maximum translational speed for raw goalie movement inside the penalty area.
-pub(crate) const RAW_MAX_SPEED_MM_S: f32 = 4_000f32;
+pub(crate) const RAW_MAX_SPEED_MM_S: f32 = 1_800f32;
 const KICK_HEADING_TOLERANCE_DEG: i32 = 3;
 const CHIP_HEADING_TOLERANCE_DEG: i32 = 5;
 const DRIBBLE_RELEASE_DISTANCE_MM: f32 = 850f32;
