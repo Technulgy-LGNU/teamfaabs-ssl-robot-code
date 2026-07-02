@@ -23,6 +23,11 @@ const KICK_HEADING_TOLERANCE_DEG: i32 = 3;
 const CHIP_HEADING_TOLERANCE_DEG: i32 = 5;
 const DRIBBLE_RELEASE_DISTANCE_MM: f32 = 850f32;
 const DRIBBLE_LIMIT_KICK_POWER: u8 = 120;
+const POSITION_RECEIVE_MIN_BALL_SPEED_MM_S: f32 = 900f32;
+const POSITION_RECEIVE_MAX_TIME_S: f32 = 0.8;
+const POSITION_RECEIVE_LATERAL_MM: f32 = 260f32;
+const POSITION_RECEIVE_FACING_DOT: f32 = 0.20;
+const POSITION_RECEIVE_CENTER_OFFSET_MM: f32 = 80f32;
 
 impl<C> Robot<C> {
   #[inline]
@@ -48,7 +53,19 @@ impl<C> Robot<C> {
         };
 
         let target_pos = self.packets.cp_data.cmd.pos.unwrap_or_default();
-        if self.packets.cp_data.cmd.raw.unwrap_or(false) {
+        let position_receive_target =
+          self.packets.cp_data.cmd.orientation.and_then(|orient| {
+            position_receive_target(robot_pos, ball_pos, ball_vel, orient as f32)
+          });
+
+        if let Some(receive_target) = position_receive_target {
+          raw_move_towards(&mut self.packets.robot_msg, robot_pos, receive_target);
+          self.packets.robot_msg.speed = self
+            .packets
+            .robot_msg
+            .speed
+            .min(max_speed_mm_s.max(350) as u16);
+        } else if self.packets.cp_data.cmd.raw.unwrap_or(false) {
           raw_move_towards(
             &mut self.packets.robot_msg,
             robot_pos,
@@ -72,6 +89,11 @@ impl<C> Robot<C> {
 
         self.packets.robot_msg.orient =
           self.packets.cp_data.cmd.orientation.unwrap_or_default() as u16;
+
+        if position_receive_target.is_some() {
+          self.packets.robot_msg.set_flag(send_flags::DRIBBLER);
+          self.packets.robot_msg.dribbler_pwr = 200;
+        }
       }
       CpTask::TaskKick => {
         let kick_orient = self.packets.cp_data.cmd.kick_orient.unwrap_or_default() as u16;
@@ -246,6 +268,35 @@ fn heading_error_deg(current: i32, target: i32) -> i32 {
 
 fn kick_release_ready(current: i32, target: i32, has_ball: bool) -> bool {
   has_ball && heading_error_deg(current, target) <= KICK_HEADING_TOLERANCE_DEG
+}
+
+fn position_receive_target(
+  robot_pos: Vec2f, ball_pos: Vec2f, ball_vel: Vec2f, orient_deg: f32,
+) -> Option<Vec2f> {
+  let speed_sq = ball_vel.norm_squared();
+  if speed_sq < POSITION_RECEIVE_MIN_BALL_SPEED_MM_S * POSITION_RECEIVE_MIN_BALL_SPEED_MM_S {
+    return None;
+  }
+
+  let to_robot = robot_pos - ball_pos;
+  let t = to_robot.dot(ball_vel) / speed_sq;
+  if !(0f32..=POSITION_RECEIVE_MAX_TIME_S).contains(&t) {
+    return None;
+  }
+
+  let closest = ball_pos + ball_vel.scale(t);
+  if (closest - robot_pos).norm() > POSITION_RECEIVE_LATERAL_MM {
+    return None;
+  }
+
+  let facing = Vec2f::new(orient_deg.to_radians().cos(), orient_deg.to_radians().sin());
+  let incoming = ball_vel.normalized() * -1f32;
+  if facing.dot(incoming) < POSITION_RECEIVE_FACING_DOT {
+    return None;
+  }
+
+  let ball_dir = ball_vel.normalized();
+  Some(closest + ball_dir * POSITION_RECEIVE_CENTER_OFFSET_MM)
 }
 
 fn update_dribble_distance_track(
