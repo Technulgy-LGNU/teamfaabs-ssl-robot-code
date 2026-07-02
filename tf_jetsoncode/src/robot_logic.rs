@@ -23,8 +23,6 @@ const KICK_HEADING_TOLERANCE_DEG: i32 = 3;
 const CHIP_HEADING_TOLERANCE_DEG: i32 = 5;
 const DRIBBLE_RELEASE_DISTANCE_MM: f32 = 850f32;
 const DRIBBLE_LIMIT_KICK_POWER: u8 = 120;
-const PROXIMITY_DRIBBLER_RANGE_MM: f32 = 260f32;
-const PROXIMITY_DRIBBLER_LATERAL_MM: f32 = 120f32;
 
 impl<C> Robot<C> {
   #[inline]
@@ -239,19 +237,6 @@ impl<C> Robot<C> {
       .max(DRIBBLE_LIMIT_KICK_POWER);
     self.packets.robot_msg.set_flag(send_flags::KICK);
   }
-
-  pub(crate) fn enable_dribbler_for_near_front_ball(&mut self, robot_pos: Vec2f, ball_pos: Vec2f) {
-    if !ball_is_near_front(
-      robot_pos,
-      self.packets.robot_self.orientation as f32,
-      ball_pos,
-    ) {
-      return;
-    }
-
-    self.packets.robot_msg.set_flag(send_flags::DRIBBLER);
-    self.packets.robot_msg.dribbler_pwr = 200;
-  }
 }
 
 fn heading_error_deg(current: i32, target: i32) -> i32 {
@@ -261,26 +246,6 @@ fn heading_error_deg(current: i32, target: i32) -> i32 {
 
 fn kick_release_ready(current: i32, target: i32, has_ball: bool) -> bool {
   has_ball && heading_error_deg(current, target) <= KICK_HEADING_TOLERANCE_DEG
-}
-
-#[inline]
-fn ball_is_near_front(robot_pos: Vec2f, robot_orientation_deg: f32, ball_pos: Vec2f) -> bool {
-  let to_ball = ball_pos - robot_pos;
-  if to_ball.norm_squared() > PROXIMITY_DRIBBLER_RANGE_MM * PROXIMITY_DRIBBLER_RANGE_MM {
-    return false;
-  }
-
-  let front = Vec2f::new(
-    robot_orientation_deg.to_radians().cos(),
-    robot_orientation_deg.to_radians().sin(),
-  );
-  let forward = to_ball.dot(front);
-  if forward < 0f32 {
-    return false;
-  }
-
-  let lateral = to_ball.det(front).abs();
-  lateral <= PROXIMITY_DRIBBLER_LATERAL_MM
 }
 
 fn update_dribble_distance_track(
@@ -328,31 +293,6 @@ mod tests {
     assert!(kick_release_ready(10, 12, true));
     assert!(!kick_release_ready(10, 12, false));
     assert!(!kick_release_ready(10, 20, true));
-  }
-
-  #[test]
-  fn near_front_ball_runs_dribbler_before_ir_possession() {
-    assert!(ball_is_near_front(
-      Vec2f::new(0f32, 0f32),
-      0f32,
-      Vec2f::new(180f32, 20f32),
-    ));
-  }
-
-  #[test]
-  fn near_front_ball_rejects_ball_behind_or_wide() {
-    let robot_pos = Vec2f::new(0f32, 0f32);
-
-    assert!(!ball_is_near_front(
-      robot_pos,
-      0f32,
-      Vec2f::new(-80f32, 0f32),
-    ));
-    assert!(!ball_is_near_front(
-      robot_pos,
-      0f32,
-      Vec2f::new(120f32, 160f32),
-    ));
   }
 
   #[test]

@@ -321,7 +321,6 @@ impl<C> Robot<C> {
     self.packets.robot_msg.vel_y = self.packets.robot_self.vel.unwrap_or_default().y as i16;
     let robot_pos = Vec2f::new_from_cp(self.packets.robot_self.pos);
     let ball_pos = Vec2f::new_from_cp(self.packets.cp_data.ball.pos);
-    self.enable_dribbler_for_near_front_ball(robot_pos, ball_pos);
     self.enforce_dribble_distance_limit(ball_pos);
 
     // Do last check, if robot is out of field, if yes, stop && checks if the robot is visibly in the vision
